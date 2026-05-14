@@ -9,6 +9,7 @@ import {
   Database,
   Download,
   ListChecks,
+  Monitor,
   Moon,
   NotebookText,
   PanelLeft,
@@ -69,14 +70,32 @@ const priorityClasses: Record<TaskPriority, string> = {
   urgent: "border-red-200 bg-red-50 text-red-700",
 };
 
+type ThemeMode = "system" | "light" | "dark";
+
+function getStoredThemeMode(): ThemeMode {
+  const storedThemeMode = window.localStorage.getItem("flowdesk.themeMode");
+
+  if (storedThemeMode === "system" || storedThemeMode === "light" || storedThemeMode === "dark") {
+    return storedThemeMode;
+  }
+
+  const legacyTheme = window.localStorage.getItem("flowdesk.theme");
+
+  return legacyTheme === "light" || legacyTheme === "dark" ? legacyTheme : "system";
+}
+
+function resolveThemeMode(themeMode: ThemeMode): "light" | "dark" {
+  if (themeMode !== "system") {
+    return themeMode;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export function WorkspaceScreen() {
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isCreateTaskDialogOpen, setIsCreateTaskDialogOpen] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const storedTheme = window.localStorage.getItem("flowdesk.theme");
-
-    return storedTheme === "dark" ? "dark" : "light";
-  });
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
   const projects = useWorkspaceStore((state) => state.projects);
   const notes = useWorkspaceStore((state) => state.notes);
   const tasks = useWorkspaceStore((state) => state.tasks);
@@ -124,9 +143,26 @@ export function WorkspaceScreen() {
   };
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("flowdesk.theme", theme);
-  }, [theme]);
+    const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      document.documentElement.dataset.theme = resolveThemeMode(themeMode);
+      document.documentElement.dataset.themeMode = themeMode;
+      window.localStorage.setItem("flowdesk.themeMode", themeMode);
+    };
+
+    applyTheme();
+    window.localStorage.removeItem("flowdesk.theme");
+
+    if (typeof colorSchemeQuery.addEventListener === "function") {
+      colorSchemeQuery.addEventListener("change", applyTheme);
+
+      return () => colorSchemeQuery.removeEventListener("change", applyTheme);
+    }
+
+    colorSchemeQuery.addListener(applyTheme);
+
+    return () => colorSchemeQuery.removeListener(applyTheme);
+  }, [themeMode]);
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--color-app-bg)] text-[var(--color-ink)] lg:h-screen lg:min-h-[720px] lg:flex-row lg:overflow-hidden">
@@ -138,8 +174,8 @@ export function WorkspaceScreen() {
         onToggleProjectPinned={toggleProjectPinned}
         onArchiveProject={archiveProject}
         onRestoreProject={restoreProject}
-        theme={theme}
-        onChangeTheme={setTheme}
+        themeMode={themeMode}
+        onChangeTheme={setThemeMode}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         {selectedProject ? (
@@ -276,7 +312,7 @@ function FirstRunView({ onCreateProject }: { onCreateProject: (input: CreateProj
             <button
               type="submit"
               disabled={!canCreateProject}
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--color-accent)] px-4 text-[13px] font-semibold text-white shadow-sm transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--color-accent)] px-4 text-[13px] font-semibold whitespace-nowrap text-white shadow-sm transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
             >
               <Plus size={15} />
               Create Project
@@ -285,7 +321,7 @@ function FirstRunView({ onCreateProject }: { onCreateProject: (input: CreateProj
         </form>
 
         <aside className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)]">
-          <p className="px-1 text-[12px] font-semibold uppercase text-[var(--color-muted)]">Opens To</p>
+          <p className="px-1 text-[12px] font-semibold uppercase text-[var(--color-muted)]">Workspace Tools</p>
           <div className="mt-4 space-y-2">
             {[
               { icon: NotebookText, title: "Notes", detail: "Markdown editor and preview" },
@@ -343,12 +379,7 @@ function ProjectTextField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        style={{
-          backgroundColor: "light-dark(#f0f3f6, #222830)",
-          borderColor: "light-dark(#d8dee6, #2b343c)",
-          color: "light-dark(#1f252d, #e9eef4)",
-        }}
-        className="mt-1 h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[14px] text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
+        className="mt-1 h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 text-[14px] text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
       />
     </label>
   );
@@ -373,12 +404,7 @@ function ProjectTextArea({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         rows={3}
-        style={{
-          backgroundColor: "light-dark(#f0f3f6, #222830)",
-          borderColor: "light-dark(#d8dee6, #2b343c)",
-          color: "light-dark(#1f252d, #e9eef4)",
-        }}
-        className="mt-1 w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[14px] leading-6 text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
+        className="mt-1 w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-2 text-[14px] leading-6 text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
       />
     </label>
   );
@@ -473,11 +499,16 @@ function CreateProjectDialog({
       <form
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-project-title"
         className="w-full max-w-[560px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
           <div>
-            <h2 className="text-[16px] font-semibold text-[var(--color-ink)]">New Project</h2>
+            <h2 id="create-project-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
+              New Project
+            </h2>
             <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Name the project. Everything else can stay empty.</p>
           </div>
           <button
@@ -501,14 +532,14 @@ function CreateProjectDialog({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!canCreateProject}
-            className="h-9 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
+            className="h-9 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
           >
             Create Project
           </button>
@@ -577,11 +608,16 @@ function CreateTaskDialog({
       <form
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-task-title"
         className="w-full max-w-[520px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
           <div>
-            <h2 className="text-[16px] font-semibold text-[var(--color-ink)]">New Task</h2>
+            <h2 id="create-task-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
+              New Task
+            </h2>
             <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Add one concrete next step.</p>
           </div>
           <button
@@ -605,7 +641,7 @@ function CreateTaskDialog({
                   type="button"
                   onClick={() => setPriority(priorityOption)}
                   className={clsx(
-                    "h-9 rounded-md border px-3 text-[12px] font-semibold capitalize transition",
+                    "h-9 rounded-md border px-3 text-[12px] font-semibold whitespace-nowrap capitalize transition",
                     priority === priorityOption
                       ? "border-[var(--color-accent)] bg-[var(--color-selection)] text-[var(--color-accent)]"
                       : "border-[var(--color-border)] bg-[var(--color-surface)] text-slate-600 hover:bg-slate-50",
@@ -622,12 +658,7 @@ function CreateTaskDialog({
               type="date"
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
-              style={{
-                backgroundColor: "light-dark(#f0f3f6, #222830)",
-                borderColor: "light-dark(#d8dee6, #2b343c)",
-                color: "light-dark(#1f252d, #e9eef4)",
-              }}
-              className="mt-1 h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[14px] text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
+              className="mt-1 h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 text-[14px] text-[var(--color-ink)] outline-none transition focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
             />
           </label>
           <ProjectTextField label="Tags" value={tags} onChange={setTags} placeholder="Optional, comma-separated" />
@@ -637,14 +668,14 @@ function CreateTaskDialog({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!canCreateTask}
-            className="h-9 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
+            className="h-9 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
           >
             Create Task
           </button>
@@ -662,8 +693,8 @@ interface ProjectSidebarProps {
   onToggleProjectPinned: (projectId: string) => void;
   onArchiveProject: (projectId: string) => void;
   onRestoreProject: (projectId: string) => void;
-  theme: "light" | "dark";
-  onChangeTheme: (theme: "light" | "dark") => void;
+  themeMode: ThemeMode;
+  onChangeTheme: (themeMode: ThemeMode) => void;
 }
 
 function ProjectSidebar({
@@ -674,7 +705,7 @@ function ProjectSidebar({
   onToggleProjectPinned,
   onArchiveProject,
   onRestoreProject,
-  theme,
+  themeMode,
   onChangeTheme,
 }: ProjectSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -697,9 +728,10 @@ function ProjectSidebar({
             <h1 className="text-[19px] font-semibold tracking-normal text-slate-950">FlowDesk</h1>
             <p className="mt-0.5 text-[12px] font-medium text-[var(--color-muted)]">Research workspace</p>
           </div>
-          <div className="flex items-center gap-1">
-            <IconButton label="Light theme" icon={Sun} isActive={theme === "light"} onClick={() => onChangeTheme("light")} />
-            <IconButton label="Dark theme" icon={Moon} isActive={theme === "dark"} onClick={() => onChangeTheme("dark")} />
+          <div className="flex items-center gap-1" aria-label="Theme">
+            <IconButton label="Use system theme" icon={Monitor} isActive={themeMode === "system"} onClick={() => onChangeTheme("system")} />
+            <IconButton label="Use light theme" icon={Sun} isActive={themeMode === "light"} onClick={() => onChangeTheme("light")} />
+            <IconButton label="Use dark theme" icon={Moon} isActive={themeMode === "dark"} onClick={() => onChangeTheme("dark")} />
           </div>
         </div>
         <label className="mt-4 flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 text-[13px] text-[var(--color-muted)]">
@@ -780,16 +812,18 @@ function ProjectSidebar({
         )}
       </div>
 
-      <div className="border-t border-[var(--color-border)] p-3">
-        <button
-          type="button"
-          onClick={onCreateProject}
-          className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white shadow-sm transition hover:bg-[var(--color-accent-strong)]"
-        >
-          <Plus size={15} />
-          New Project
-        </button>
-      </div>
+      {projects.length > 0 && (
+        <div className="border-t border-[var(--color-border)] p-3">
+          <button
+            type="button"
+            onClick={onCreateProject}
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white shadow-sm transition hover:bg-[var(--color-accent-strong)]"
+          >
+            <Plus size={15} />
+            New Project
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
@@ -923,9 +957,6 @@ function WorkspaceHeader({
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-semibold tracking-normal text-slate-950">{project.title}</h2>
-              {project.description && (
-                <p className="mt-0.5 max-w-3xl truncate text-[13px] text-[var(--color-muted)]">{project.description}</p>
-              )}
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -941,21 +972,22 @@ function WorkspaceHeader({
             <span className="text-[12px] text-[var(--color-muted)]">Updated {formatDateTime(project.updatedAt)}</span>
           </div>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:shrink-0">
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 xl:w-auto xl:shrink-0">
           {activeSessionLabel ? (
             <button
               type="button"
               onClick={onEndSession}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-[13px] font-semibold text-red-700 transition hover:bg-red-100"
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
             >
               <Square size={14} />
-              End {activeSessionLabel}
+              <span>End Session</span>
+              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] leading-none text-red-700">{activeSessionLabel}</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={onStartSession}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--color-accent)] bg-[var(--color-selection)] px-3 text-[13px] font-semibold text-[var(--color-accent)] transition hover:bg-[var(--color-app-bg)]"
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-[var(--color-accent)] bg-[var(--color-selection)] px-3 text-[13px] font-semibold whitespace-nowrap text-[var(--color-accent)] transition hover:bg-[var(--color-app-bg)]"
             >
               <Play size={14} />
               Start Session
@@ -987,7 +1019,7 @@ function ViewTabs({ activeView, onSelectView }: { activeView: WorkspaceView; onS
             type="button"
             onClick={() => onSelectView(item.id)}
             className={clsx(
-              "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] font-semibold transition",
+              "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] font-semibold whitespace-nowrap transition",
               activeView === item.id
                 ? "bg-[var(--color-accent)] text-white"
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
@@ -1126,7 +1158,7 @@ function NotesView({
               <button
                 type="button"
                 onClick={onCreateNote}
-                className="mt-3 inline-flex h-8 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[12px] font-semibold text-white"
+                className="mt-3 inline-flex h-8 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[12px] font-semibold whitespace-nowrap text-white"
               >
                 <Plus size={13} />
                 New Note
@@ -1166,9 +1198,9 @@ function NotesView({
             ) : (
               <p className="truncate text-[13px] font-semibold text-slate-950">Untitled</p>
             )}
-            <p className="text-[12px] text-[var(--color-muted)]">CodeMirror Markdown editor</p>
+            <p className="text-[12px] text-[var(--color-muted)]">Markdown editor</p>
           </div>
-          <span className="rounded-md bg-slate-100 px-2 py-1 text-[12px] font-medium text-slate-600">Saved locally</span>
+          <span className="rounded-md bg-slate-100 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-slate-600">Saved locally</span>
         </div>
         {selectedNote ? (
           <Suspense
@@ -1269,7 +1301,7 @@ function SessionsView({
                       {session.notes || "No notes recorded."}
                     </p>
                   </div>
-                  <span className="rounded-md bg-slate-100 px-2 py-1 text-[12px] font-semibold text-slate-600">
+                  <span className="rounded-md bg-slate-100 px-2 py-1 text-[12px] font-semibold whitespace-nowrap text-slate-600">
                     {session.durationMinutes
                       ? formatDuration(session.durationMinutes)
                       : formatDuration(getElapsedMinutes(session.startedAt, null))}
@@ -1317,7 +1349,7 @@ function ExportsView({
           <button
             type="button"
             onClick={onPrepareMarkdownExport}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white"
           >
             <Download size={15} />
             Generate Markdown
@@ -1325,7 +1357,7 @@ function ExportsView({
           <button
             type="button"
             onClick={onPrepareJsonExport}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold text-slate-700"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700"
           >
             <Database size={15} />
             Generate JSON Backup
@@ -1385,7 +1417,7 @@ function SessionCard({
           <button
             type="button"
             onClick={onEndSession}
-            className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white"
+            className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white"
           >
             <Square size={13} />
             End Session
@@ -1395,7 +1427,7 @@ function SessionCard({
         <button
           type="button"
           onClick={onStartSession}
-          className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white"
+          className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white"
         >
           <Play size={14} />
           Start Focus Session
@@ -1423,7 +1455,7 @@ function TaskStack({
           <button
             type="button"
             onClick={onCreateTask}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 py-4 text-center text-[12px] font-semibold text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 py-4 text-center text-[12px] font-semibold whitespace-nowrap text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
           >
             <Plus size={13} />
             New Task
@@ -1441,7 +1473,7 @@ function TaskCard({ task, onUpdateTaskStatus }: { task: Task; onUpdateTaskStatus
     <article className="rounded-md border border-[var(--color-border)] bg-white p-3">
       <div className="flex items-start justify-between gap-2">
         <p className="text-[13px] font-semibold leading-5 text-slate-950">{task.title}</p>
-        <span className={clsx("rounded-md border px-2 py-1 text-[11px] font-semibold capitalize", priorityClasses[task.priority])}>
+        <span className={clsx("rounded-md border px-2 py-1 text-[11px] font-semibold whitespace-nowrap capitalize", priorityClasses[task.priority])}>
           {task.priority}
         </span>
       </div>
@@ -1495,7 +1527,7 @@ function TimelineList({ timelineEvents }: { timelineEvents: TimelineEvent[] }) {
     <div className="space-y-4">
       {timelineEvents.map((event) => (
         <div key={event.id} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3">
-          <span className="mt-1 h-3 w-3 rounded-full border-2 border-white bg-[var(--color-accent)] shadow-[0_0_0_1px_#9fcac4]" />
+          <span className="mt-1 h-3 w-3 rounded-full border-2 border-[var(--color-surface)] bg-[var(--color-accent)] ring-1 ring-[var(--color-border)]" />
           <div>
             <p className="text-[13px] font-semibold text-slate-950">{event.title}</p>
             <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">{event.description}</p>
@@ -1531,7 +1563,7 @@ function ActionButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label:
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50"
+      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
     >
       <Icon size={14} />
       {label}
@@ -1588,7 +1620,7 @@ function EmptyState({
         <button
           type="button"
           onClick={onAction}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold text-white"
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white"
         >
           <Plus size={14} />
           {actionLabel}

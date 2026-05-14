@@ -2,12 +2,10 @@ import { create } from "zustand";
 import type {
   Note,
   Project,
-  ReferenceRecord,
   Task,
   TaskStatus,
   TimelineEvent,
   WorkSession,
-  WorkspaceFile,
   WorkspaceSnapshot,
   WorkspaceView,
 } from "../domain/workspace";
@@ -118,13 +116,12 @@ function createTimelineEvent(projectId: string, title: string, description: stri
   };
 }
 
-function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], sessions: WorkSession[], references: ReferenceRecord[]): string {
+function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], sessions: WorkSession[]): string {
   const taskLines = tasks.map((task) => `- [${task.status === "done" ? "x" : " "}] ${task.title} (${task.priority})`);
   const sessionLines = sessions.map((session) => {
     const duration = session.durationMinutes ?? getElapsedMinutes(session.startedAt, session.endedAt);
     return `- ${session.title}: ${duration} minutes`;
   });
-  const referenceLines = references.map((reference) => `- ${reference.title} (${reference.type}): ${reference.source}`);
   const noteSections = notes.map((note) => `## ${note.title}\n\n${note.content}`);
 
   return [
@@ -138,9 +135,6 @@ function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], se
     "",
     "## Sessions",
     sessionLines.join("\n") || "No sessions recorded.",
-    "",
-    "## References",
-    referenceLines.join("\n") || "No references recorded.",
     "",
     "# Notes",
     noteSections.join("\n\n---\n\n"),
@@ -554,10 +548,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const projectNotes = state.notes.filter((note) => note.projectId === project.id);
     const projectTasks = state.tasks.filter((task) => task.projectId === project.id);
     const projectSessions = state.sessions.filter((session) => session.projectId === project.id);
-    const projectReferences = state.references.filter((reference) => reference.projectId === project.id);
 
     set({
-      exportPreview: buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions, projectReferences),
+      exportPreview: buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions),
       activeView: "exports",
       timelineEvents: [
         createTimelineEvent(project.id, "Export generated", "Prepared Markdown project record.", "export_generated"),
@@ -575,8 +568,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       notes: state.notes.filter((note) => note.projectId === projectId),
       tasks: state.tasks.filter((task) => task.projectId === projectId),
       sessions: state.sessions.filter((session) => session.projectId === projectId),
-      references: state.references.filter((reference) => reference.projectId === projectId),
-      files: state.files.filter((file) => file.projectId === projectId),
       timelineEvents: state.timelineEvents.filter((event) => event.projectId === projectId),
     };
 
