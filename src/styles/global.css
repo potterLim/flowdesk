@@ -4,21 +4,24 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  color: #18212b;
-  background: #f6f8f7;
+  color: #1f252d;
+  background: #f5f6f8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
 
-  --color-app-bg: #f6f8f7;
+  --color-app-bg: #f5f6f8;
   --color-surface: #ffffff;
-  --color-surface-subtle: #eef3f1;
-  --color-ink: #18212b;
-  --color-muted: #60707c;
-  --color-border: #dce5e2;
-  --color-accent: #246b68;
-  --color-accent-strong: #174d4b;
+  --color-surface-subtle: #f0f3f6;
+  --color-ink: #1f252d;
+  --color-muted: #65717f;
+  --color-border: #d8dee6;
+  --color-accent: #0f6cbd;
+  --color-accent-strong: #115ea3;
+  --color-selection: #e8f2fc;
+  --color-focus-ring: rgb(15 108 189 / 0.16);
   --color-blue: #2f6fad;
   --color-amber: #b7791f;
   --color-red: #b64a42;
@@ -28,19 +31,36 @@
 :root[data-theme="dark"] {
   color: #e8edf2;
   background: #101418;
+  color-scheme: dark;
 
-  --color-app-bg: #101418;
-  --color-surface: #171d22;
-  --color-surface-subtle: #20272e;
-  --color-ink: #e8edf2;
+  --color-app-bg: #111418;
+  --color-surface: #181c20;
+  --color-surface-subtle: #222830;
+  --color-ink: #e9eef4;
   --color-muted: #9ba8b3;
   --color-border: #2b343c;
-  --color-accent: #4cc4b7;
-  --color-accent-strong: #7bd8ce;
+  --color-accent: #64b5f6;
+  --color-accent-strong: #8ccaff;
+  --color-selection: #17324d;
+  --color-focus-ring: rgb(100 181 246 / 0.22);
   --color-blue: #69a7e8;
   --color-amber: #e1ad4c;
   --color-red: #f27970;
   --shadow-soft: 0 14px 38px rgb(0 0 0 / 0.32);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea {
+  background-color: #222830 !important;
+  color: #e9eef4 !important;
+  border-color: #2b343c !important;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: #7d8a96;
 }
 
 * {

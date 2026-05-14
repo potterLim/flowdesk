@@ -21,6 +21,13 @@ export interface CreateProjectInput {
   accent: Project["accent"];
 }
 
+export interface CreateTaskInput {
+  title: string;
+  priority: Task["priority"];
+  dueDate: string | null;
+  tags: string[];
+}
+
 interface WorkspaceState extends WorkspaceSnapshot {
   activeView: WorkspaceView;
   selectedProjectId: string;
@@ -31,12 +38,14 @@ interface WorkspaceState extends WorkspaceSnapshot {
   createProject: (input: CreateProjectInput) => void;
   toggleProjectPinned: (projectId: string) => void;
   archiveProject: (projectId: string) => void;
+  restoreProject: (projectId: string) => void;
   selectProject: (projectId: string) => void;
   selectNote: (noteId: string) => void;
   setActiveView: (view: WorkspaceView) => void;
+  updateSelectedNoteTitle: (title: string) => void;
   updateSelectedNoteContent: (content: string) => void;
   createNote: () => void;
-  createTask: () => void;
+  createTask: (input: CreateTaskInput) => void;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   startSession: () => void;
   endActiveSession: () => void;
@@ -205,10 +214,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const newProject: Project = {
       id: createId("project"),
       title,
-      description: description || "A focused workspace for long-running research, study, and engineering work.",
+      description,
       createdAt: now,
       updatedAt: now,
-      tags: input.tags.length > 0 ? input.tags : ["research"],
+      tags: input.tags,
       status: "active",
       isPinned: false,
       accent: input.accent,
@@ -278,6 +287,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistCurrentState(get);
   },
 
+  restoreProject(projectId) {
+    const state = get();
+    const now = new Date().toISOString();
+
+    set({
+      projects: state.projects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              status: "active",
+              updatedAt: now,
+            }
+          : project,
+      ),
+      selectedProjectId: projectId,
+      activeView: "overview",
+      exportPreview: "",
+    });
+    persistCurrentState(get);
+  },
+
   selectProject(projectId) {
     const firstProjectNote = get().notes.find((note) => note.projectId === projectId);
 
@@ -298,6 +328,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveView(view) {
     set({ activeView: view });
+  },
+
+  updateSelectedNoteTitle(title) {
+    const state = get();
+    const updatedAt = new Date().toISOString();
+    const selectedNote = state.notes.find((note) => note.id === state.selectedNoteId);
+
+    if (!selectedNote) {
+      return;
+    }
+
+    set({
+      notes: state.notes.map((note) =>
+        note.id === selectedNote.id
+          ? {
+              ...note,
+              title,
+              updatedAt,
+            }
+          : note,
+      ),
+      projects: updateProjectTimestamp(state.projects, selectedNote.projectId, updatedAt),
+    });
+    persistCurrentState(get);
   },
 
   updateSelectedNoteContent(content) {
@@ -335,9 +389,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const newNote: Note = {
       id: createId("note"),
       projectId: state.selectedProjectId,
-      title: "Untitled research note",
+      title: "Untitled note",
       folder: "Inbox",
-      content: "# Untitled research note\n\nStart with the observation, source, or decision that should be preserved.",
+      content: "",
       createdAt: now,
       updatedAt: now,
     };
@@ -348,14 +402,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "notes",
       projects: updateProjectTimestamp(state.projects, state.selectedProjectId, now),
       timelineEvents: [
-        createTimelineEvent(state.selectedProjectId, "Note created", "Created Untitled research note in Inbox.", "note_created"),
+        createTimelineEvent(state.selectedProjectId, "Note created", "Created a note in Inbox.", "note_created"),
         ...state.timelineEvents,
       ],
     });
     persistCurrentState(get);
   },
 
-  createTask() {
+  createTask(input) {
     const state = get();
 
     if (!state.selectedProjectId) {
@@ -363,14 +417,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
 
     const now = new Date().toISOString();
+    const title = input.title.trim();
     const newTask: Task = {
       id: createId("task"),
       projectId: state.selectedProjectId,
-      title: "Define the next concrete research step",
+      title: title || "Untitled task",
       status: "todo",
-      priority: "medium",
-      dueDate: null,
-      tags: ["next"],
+      priority: input.priority,
+      dueDate: input.dueDate,
+      tags: input.tags,
       linkedSessionId: null,
       createdAt: now,
       updatedAt: now,
@@ -436,8 +491,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const newSession: WorkSession = {
       id: createId("session"),
       projectId: state.selectedProjectId,
-      title: "Focused work session",
-      notes: "Capture what changed before ending this session.",
+      title: "Focus session",
+      notes: "",
       startedAt: now,
       endedAt: null,
       durationMinutes: null,
