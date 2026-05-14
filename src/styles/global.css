@@ -1,0 +1,223 @@
+@import "tailwindcss";
+
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #18212b;
+  background: #f6f8f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --color-app-bg: #f6f8f7;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #eef3f1;
+  --color-ink: #18212b;
+  --color-muted: #60707c;
+  --color-border: #dce5e2;
+  --color-accent: #246b68;
+  --color-accent-strong: #174d4b;
+  --color-blue: #2f6fad;
+  --color-amber: #b7791f;
+  --color-red: #b64a42;
+  --shadow-soft: 0 12px 32px rgb(24 33 43 / 0.08);
+}
+
+:root[data-theme="dark"] {
+  color: #e8edf2;
+  background: #101418;
+
+  --color-app-bg: #101418;
+  --color-surface: #171d22;
+  --color-surface-subtle: #20272e;
+  --color-ink: #e8edf2;
+  --color-muted: #9ba8b3;
+  --color-border: #2b343c;
+  --color-accent: #4cc4b7;
+  --color-accent-strong: #7bd8ce;
+  --color-blue: #69a7e8;
+  --color-amber: #e1ad4c;
+  --color-red: #f27970;
+  --shadow-soft: 0 14px 38px rgb(0 0 0 / 0.32);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+:root[data-theme="dark"] .bg-white {
+  background-color: #171d22;
+}
+
+:root[data-theme="dark"] .bg-\[\#fbfcfc\] {
+  background-color: #151b20;
+}
+
+:root[data-theme="dark"] .bg-\[\#f8faf9\] {
+  background-color: #141a1f;
+}
+
+:root[data-theme="dark"] .bg-slate-50,
+:root[data-theme="dark"] .bg-slate-100 {
+  background-color: #222b33;
+}
+
+:root[data-theme="dark"] .bg-\[\#e7f1ef\],
+:root[data-theme="dark"] .bg-\[\#eef6f4\],
+:root[data-theme="dark"] .bg-teal-50 {
+  background-color: #193f3b;
+}
+
+:root[data-theme="dark"] .border-teal-200 {
+  border-color: #2f766f;
+}
+
+:root[data-theme="dark"] .text-teal-700,
+:root[data-theme="dark"] .text-teal-800,
+:root[data-theme="dark"] .text-teal-900,
+:root[data-theme="dark"] .text-teal-950 {
+  color: #b9f2ec;
+}
+
+:root[data-theme="dark"] .text-slate-950,
+:root[data-theme="dark"] .text-slate-900,
+:root[data-theme="dark"] .text-slate-800,
+:root[data-theme="dark"] .text-slate-700 {
+  color: #edf2f7;
+}
+
+:root[data-theme="dark"] .text-slate-600,
+:root[data-theme="dark"] .text-slate-500,
+:root[data-theme="dark"] .text-slate-400 {
+  color: #a6b2bd;
+}
+
+:root[data-theme="dark"] .hover\:bg-slate-50:hover,
+:root[data-theme="dark"] .hover\:bg-slate-100:hover,
+:root[data-theme="dark"] .hover\:bg-slate-200:hover,
+:root[data-theme="dark"] .hover\:bg-white:hover {
+  background-color: #25303a;
+}
+
+:root[data-theme="dark"] .flowdesk-markdown {
+  color: #dce5eb;
+}
+
+:root[data-theme="dark"] .flowdesk-markdown h1,
+:root[data-theme="dark"] .flowdesk-markdown h2 {
+  color: #eef8f6;
+}
+
+:root[data-theme="dark"] .flowdesk-markdown th {
+  background: #202a31;
+  color: #e8edf2;
+}
+
+:root[data-theme="dark"] .flowdesk-markdown code {
+  background: #202a31;
+  color: #f7b267;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.flowdesk-markdown {
+  color: #24313c;
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.flowdesk-markdown h1 {
+  margin: 0 0 18px;
+  color: #101820;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.flowdesk-markdown h2 {
+  margin: 26px 0 10px;
+  color: #173f3d;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.flowdesk-markdown p {
+  margin: 0 0 12px;
+}
+
+.flowdesk-markdown ul,
+.flowdesk-markdown ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.flowdesk-markdown li {
+  margin: 4px 0;
+}
+
+.flowdesk-markdown table {
+  width: 100%;
+  margin: 16px 0;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.flowdesk-markdown th,
+.flowdesk-markdown td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.flowdesk-markdown th {
+  background: #eef3f1;
+  color: #273640;
+  font-weight: 700;
+}
+
+.flowdesk-markdown code {
+  border-radius: 5px;
+  background: #eef3f1;
+  padding: 2px 5px;
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.flowdesk-markdown pre {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #17212b;
+  padding: 14px;
+  color: #eef7f4;
+}
+
+.flowdesk-markdown pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
