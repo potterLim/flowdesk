@@ -21,11 +21,11 @@ export const viewItems: Array<{ id: WorkspaceView; label: string; icon: LucideIc
 ];
 
 export const accentClasses: Record<Project["accent"], string> = {
-  teal: "bg-[#00897b] text-white",
-  blue: "bg-[#0078d4] text-white",
-  violet: "bg-[#7c3aed] text-white",
-  amber: "bg-[#ffb900] text-[#1f1300]",
-  rose: "bg-[#d83b7d] text-white",
+  teal: "bg-[#00c7be] text-[#061f1e]",
+  blue: "bg-[#0a84ff] text-[#06142a]",
+  violet: "bg-[#bf5af2] text-[#1c0b2a]",
+  amber: "bg-[#ffd60a] text-[#241800]",
+  rose: "bg-[#ff375f] text-[#2b0710]",
 };
 
 export const taskStatusLabels: Record<TaskStatus, string> = {
