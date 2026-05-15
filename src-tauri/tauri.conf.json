@@ -21,7 +21,7 @@
         "fullscreen": false,
         "hiddenTitle": true,
         "acceptFirstMouse": true,
-        "backgroundColor": "#F6F7F9"
+        "backgroundColor": "#F6F7FB"
       }
     ],
     "security": {

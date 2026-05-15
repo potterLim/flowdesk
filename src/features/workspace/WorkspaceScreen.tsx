@@ -27,7 +27,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { clsx } from "clsx";
@@ -495,7 +495,7 @@ export function WorkspaceScreen() {
       {
         id: "save-workspace-backup",
         label: "Back Up Workspace",
-        detail: "Save a complete JSON backup",
+        detail: "Save a complete workspace backup",
         shortcut: "Command/Ctrl+Shift+B",
         icon: Database,
         onSelect: handleSaveWorkspaceBackup,
@@ -822,7 +822,7 @@ export function WorkspaceScreen() {
       <ConfirmDialog
         isOpen={pendingWorkspaceRestore !== null}
         title="Restore Workspace Backup"
-        detail={`This will replace the current local workspace with ${pendingWorkspaceRestore?.projects.length ?? 0} backed-up projects. Create a fresh backup first if you need the current state.`}
+        detail={`FlowDesk will replace the current local workspace with ${pendingWorkspaceRestore?.projects.length ?? 0} projects from the selected backup. Save a fresh backup first if you need to keep the current workspace.`}
         confirmLabel="Restore Backup"
         variant="warning"
         onCancel={handleCancelWorkspaceRestore}
@@ -830,9 +830,9 @@ export function WorkspaceScreen() {
       />
       <ConfirmDialog
         isOpen={isStorageRepairConfirmOpen}
-        title="Rebuild Local Database"
-        detail="FlowDesk will move the current SQLite files into a recovery folder and open a clean local database. Managed files and JSON backups are not deleted."
-        confirmLabel="Rebuild Database"
+        title="Repair Local Storage"
+        detail="FlowDesk will move the current storage files into a recovery folder and open a clean local workspace. Managed files and saved backups are left in place."
+        confirmLabel="Repair Storage"
         variant="warning"
         onCancel={() => setIsStorageRepairConfirmOpen(false)}
         onConfirm={handleConfirmStorageRepair}
@@ -866,7 +866,7 @@ function WorkspaceBootView({
             </span>
             <div>
               <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">FlowDesk</h1>
-              <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Opening local workspace</p>
+              <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Opening your local workspace</p>
             </div>
           </div>
           <div className="flex items-center gap-1" aria-label="Theme">
@@ -928,10 +928,10 @@ function FirstRunView({
             <PanelLeft size={20} />
           </div>
           <h2 className="mt-6 max-w-2xl text-[32px] font-semibold leading-tight tracking-normal text-[var(--color-ink)]">
-            Start with one project.
+            Create your first project.
           </h2>
           <p className="mt-3 max-w-2xl text-[15px] leading-7 text-[var(--color-muted)]">
-            Give the workspace a clear anchor. Notes, tasks, sessions, timeline records, and exports will stay attached to it.
+            FlowDesk keeps notes, tasks, sessions, files, and exports organized around a durable project record.
           </p>
 
           <div className="mt-7 grid gap-4">
@@ -953,7 +953,7 @@ function FirstRunView({
           </div>
 
           <div className="mt-7 flex items-center justify-between gap-3">
-            <p className="text-[12px] leading-5 text-[var(--color-muted)]">Stored locally on this device.</p>
+            <p className="text-[12px] leading-5 text-[var(--color-muted)]">Private by default. Stored on this device.</p>
             <button
               type="submit"
               disabled={!canCreateProject}
@@ -966,14 +966,14 @@ function FirstRunView({
         </form>
 
         <aside className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)]">
-          <p className="px-1 text-[12px] font-semibold uppercase text-[var(--color-muted)]">Workspace Tools</p>
+          <p className="px-1 text-[12px] font-semibold uppercase text-[var(--color-muted)]">Every Project Includes</p>
           <div className="mt-4 space-y-2">
             {[
               { icon: NotebookText, title: "Notes", detail: "Markdown editor and preview" },
               { icon: CheckSquare, title: "Tasks", detail: "Priorities and due dates" },
               { icon: Timer, title: "Sessions", detail: "Focused work blocks" },
               { icon: Clock3, title: "Timeline", detail: "Project activity history" },
-              { icon: Download, title: "Exports", detail: "Markdown and JSON records" },
+              { icon: Download, title: "Exports", detail: "Portable project records" },
             ].map((item) => {
               const Icon = item.icon;
 
@@ -997,7 +997,7 @@ function FirstRunView({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-semibold text-[var(--color-ink)]">Restore existing work</p>
-                <p className="mt-0.5 text-[12px] leading-5 text-[var(--color-muted)]">Open a FlowDesk JSON backup before creating a new project.</p>
+                <p className="mt-0.5 text-[12px] leading-5 text-[var(--color-muted)]">Open a FlowDesk backup before creating a new workspace.</p>
               </div>
             </div>
             <button
@@ -1166,7 +1166,7 @@ function CreateProjectDialog({
             <h2 id="create-project-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
               New Project
             </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Name the project. Everything else can stay empty.</p>
+            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Set the anchor for a focused workspace record.</p>
           </div>
           <button
             type="button"
@@ -1407,7 +1407,9 @@ function ProjectSettingsDialog({
             <h2 id="project-settings-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
               Project Settings
             </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">{project.status === "archived" ? "Archived project" : "Active project"}</p>
+            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+              {project.status === "archived" ? "Read-only archived project" : "Project identity and organization"}
+            </p>
           </div>
           <button
             type="button"
@@ -1476,8 +1478,9 @@ function ConfirmDialog({
 }) {
   const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onCancel);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
-  const dialogTitleId = `confirm-dialog-title-${variant}`;
-  const dialogDetailId = `confirm-dialog-detail-${variant}`;
+  const generatedDialogId = useId();
+  const dialogTitleId = `${generatedDialogId}-title`;
+  const dialogDetailId = `${generatedDialogId}-detail`;
   const Icon = variant === "danger" ? Trash2 : Database;
   const iconClass = variant === "danger" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700";
   const confirmClass =
@@ -1592,7 +1595,10 @@ function ProjectSidebar({
   const archivedProjects = visibleProjects.filter((project) => project.status === "archived");
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:w-[292px] lg:border-b-0 lg:border-r">
+    <aside
+      aria-label="Projects and workspace controls"
+      className="flex w-full shrink-0 flex-col border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:w-[292px] lg:border-b-0 lg:border-r"
+    >
       <div className="border-b border-[var(--color-border)] px-4 py-4">
         <div className="flex items-center justify-between">
           <div>
@@ -1742,16 +1748,16 @@ function PersistenceStatusBadge({
         : status === "error"
           ? "Storage issue"
           : mode === "sqlite"
-            ? "SQLite saved"
-            : "Browser saved";
+            ? "Saved locally"
+            : "Preview saved";
   const detail =
     status === "saving"
-      ? "Writing workspace records"
+      ? "Writing local changes"
       : status === "error"
-        ? (error ?? "FlowDesk could not save changes.")
+        ? (error ?? "FlowDesk could not write to local storage.")
         : lastPersistedAt
           ? `Updated ${formatDateTime(lastPersistedAt)}`
-          : "Local records are current";
+          : "Workspace is current";
   const dotClass =
     status === "error"
       ? "bg-red-500"
@@ -1849,7 +1855,7 @@ function WorkspaceBackupStatusMessage({
   if (workspaceBackupState.status === "saved") {
     return (
       <p className={clsx(baseClass, "truncate text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
-        Backup saved.
+        Workspace backup saved.
       </p>
     );
   }
@@ -1881,7 +1887,7 @@ function WorkspaceBackupStatusMessage({
   if (workspaceBackupState.status === "cancelled") {
     return (
       <p className={clsx(baseClass, "text-[11px] leading-5 text-[var(--color-muted)]")} role="status" aria-live="polite">
-        Backup action cancelled.
+        No changes made.
       </p>
     );
   }
@@ -1918,6 +1924,7 @@ function ProjectRow({
       <button
         type="button"
         onClick={() => onSelectProject(project.id)}
+        aria-label={`Open ${project.title}`}
         aria-current={isSelected ? "page" : undefined}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
@@ -2590,7 +2597,7 @@ function ExportStatusMessage({
   if (!exportSaveState) {
     return (
       <p className="mt-3 rounded-md bg-[var(--color-app-bg)] px-3 py-2 text-[12px] leading-5 text-[var(--color-muted)]">
-        Save uses the native file picker in the desktop app.
+        Desktop builds use the system save dialog.
       </p>
     );
   }
@@ -2674,7 +2681,7 @@ function PersistenceAlert({
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <Database size={16} className="mt-0.5 shrink-0" />
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold">FlowDesk could not save the latest changes.</p>
+          <p className="text-[13px] font-semibold">FlowDesk could not write local changes.</p>
           <p className="mt-1 text-[12px] leading-5">{error ?? "Keep the app open and try the action again."}</p>
         </div>
       </div>
@@ -2684,7 +2691,7 @@ function PersistenceAlert({
         className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md border border-red-200 bg-[var(--color-surface)] px-3 text-[12px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
       >
         <Database size={13} />
-        Rebuild Local Database
+        Repair Local Storage
       </button>
     </div>
   );
@@ -2765,7 +2772,9 @@ function SessionCard({
           Restore this project before tracking new sessions.
         </div>
       )}
-      <p className="mt-3 text-[12px] text-[var(--color-muted)]">{sessions.length} sessions recorded</p>
+      <p className="mt-3 text-[12px] text-[var(--color-muted)]">
+        {sessions.length === 1 ? "1 session recorded" : `${sessions.length} sessions recorded`}
+      </p>
     </section>
   );
 }

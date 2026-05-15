@@ -41,7 +41,9 @@ export function FilesView({
         <div className="flex h-14 items-center justify-between border-b border-[var(--color-border)] px-4">
           <div className="min-w-0">
             <h3 className="truncate text-[14px] font-semibold text-slate-950">Files</h3>
-            <p className="mt-0.5 truncate text-[12px] text-[var(--color-muted)]">{files.length} project attachments</p>
+            <p className="mt-0.5 truncate text-[12px] text-[var(--color-muted)]">
+              {files.length === 1 ? "1 project attachment" : `${files.length} project attachments`}
+            </p>
           </div>
           {canEditProject && (
             <button

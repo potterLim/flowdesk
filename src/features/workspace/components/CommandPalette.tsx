@@ -139,7 +139,7 @@ export function CommandPalette({
             aria-autocomplete="list"
             aria-controls="flowdesk-command-results"
             aria-activedescendant={activeCommand ? `flowdesk-command-${activeCommand.id}` : undefined}
-            className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-[var(--color-ink)] outline-none placeholder:text-slate-400"
+            className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-[var(--color-ink)] outline-none placeholder:text-slate-400 focus-visible:outline-none"
             placeholder="Search commands"
           />
           <h2 id="command-palette-title" className="sr-only">

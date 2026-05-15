@@ -4,49 +4,49 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  color: #1f252d;
-  background: #f5f6f8;
+  color: #1d1d1f;
+  background: #f6f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
 
-  --color-app-bg: #f5f6f8;
+  --color-app-bg: #f6f7fb;
   --color-surface: #ffffff;
-  --color-surface-subtle: #f0f3f6;
-  --color-ink: #1f252d;
-  --color-muted: #65717f;
-  --color-border: #d8dee6;
-  --color-accent: #0f6cbd;
-  --color-accent-strong: #115ea3;
-  --color-selection: #e8f2fc;
-  --color-focus-ring: rgb(15 108 189 / 0.16);
-  --color-blue: #2f6fad;
-  --color-amber: #b7791f;
-  --color-red: #b64a42;
-  --shadow-soft: 0 12px 32px rgb(24 33 43 / 0.08);
+  --color-surface-subtle: #eef1f6;
+  --color-ink: #1d1d1f;
+  --color-muted: #69717d;
+  --color-border: #d7dde6;
+  --color-accent: #0078d4;
+  --color-accent-strong: #005a9e;
+  --color-selection: #e5f1fb;
+  --color-focus-ring: rgb(0 120 212 / 0.2);
+  --color-blue: #256fba;
+  --color-amber: #a56f00;
+  --color-red: #c42b1c;
+  --shadow-soft: 0 18px 44px rgb(31 43 58 / 0.08);
 }
 
 :root[data-theme="dark"] {
-  color: #e8edf2;
-  background: #101418;
+  color: #f5f5f7;
+  background: #101214;
   color-scheme: dark;
 
-  --color-app-bg: #111418;
-  --color-surface: #181c20;
-  --color-surface-subtle: #222830;
-  --color-ink: #e9eef4;
-  --color-muted: #9ba8b3;
-  --color-border: #2b343c;
-  --color-accent: #64b5f6;
-  --color-accent-strong: #8ccaff;
-  --color-selection: #17324d;
-  --color-focus-ring: rgb(100 181 246 / 0.22);
-  --color-blue: #69a7e8;
-  --color-amber: #e1ad4c;
-  --color-red: #f27970;
-  --shadow-soft: 0 14px 38px rgb(0 0 0 / 0.32);
+  --color-app-bg: #101214;
+  --color-surface: #191c20;
+  --color-surface-subtle: #232830;
+  --color-ink: #f5f5f7;
+  --color-muted: #a4acb7;
+  --color-border: #303741;
+  --color-accent: #4da6ff;
+  --color-accent-strong: #73bbff;
+  --color-selection: #183656;
+  --color-focus-ring: rgb(77 166 255 / 0.24);
+  --color-blue: #6aa9f0;
+  --color-amber: #d5a033;
+  --color-red: #ff776b;
+  --shadow-soft: 0 18px 48px rgb(0 0 0 / 0.34);
 }
 
 * {
@@ -60,12 +60,12 @@ body {
 }
 
 :root[data-theme="dark"] .bg-white {
-  background-color: #171d22 !important;
+  background-color: #191c20 !important;
 }
 
 :root[data-theme="dark"] .bg-slate-50,
 :root[data-theme="dark"] .bg-slate-100 {
-  background-color: #222b33 !important;
+  background-color: #232830 !important;
 }
 
 :root[data-theme="dark"] .bg-\[var\(--color-app-bg\)\] {
@@ -101,15 +101,15 @@ body {
 :root[data-theme="dark"] .hover\:bg-slate-100:hover,
 :root[data-theme="dark"] .hover\:bg-slate-200:hover,
 :root[data-theme="dark"] .hover\:bg-white:hover {
-  background-color: #25303a !important;
+  background-color: #29313b !important;
 }
 
 :root[data-theme="dark"] .bg-blue-50 {
-  background-color: #14314f !important;
+  background-color: #14385e !important;
 }
 
 :root[data-theme="dark"] .border-blue-200 {
-  border-color: #245a8e !important;
+  border-color: #2d6093 !important;
 }
 
 :root[data-theme="dark"] .text-blue-700 {
@@ -117,11 +117,11 @@ body {
 }
 
 :root[data-theme="dark"] .bg-amber-50 {
-  background-color: #3f2d12 !important;
+  background-color: #3a2b10 !important;
 }
 
 :root[data-theme="dark"] .border-amber-200 {
-  border-color: #8a621e !important;
+  border-color: #83611f !important;
 }
 
 :root[data-theme="dark"] .text-amber-700 {
@@ -130,11 +130,11 @@ body {
 
 :root[data-theme="dark"] .bg-red-50,
 :root[data-theme="dark"] .bg-red-100 {
-  background-color: #44201f !important;
+  background-color: #48201d !important;
 }
 
 :root[data-theme="dark"] .border-red-200 {
-  border-color: #8f403c !important;
+  border-color: #91443f !important;
 }
 
 :root[data-theme="dark"] .text-red-700 {
@@ -146,28 +146,28 @@ body {
 }
 
 html[data-theme="dark"] .bg-white {
-  background-color: #171d22 !important;
+  background-color: #191c20 !important;
 }
 
 html[data-theme="dark"] .bg-slate-50,
 html[data-theme="dark"] .bg-slate-100 {
-  background-color: #222b33 !important;
+  background-color: #232830 !important;
 }
 
 html[data-theme="dark"] .bg-\[var\(--color-app-bg\)\] {
-  background-color: #111418 !important;
+  background-color: #101214 !important;
 }
 
 html[data-theme="dark"] .bg-\[var\(--color-selection\)\] {
-  background-color: #17324d !important;
+  background-color: #183656 !important;
 }
 
 html[data-theme="dark"] .bg-\[var\(--color-surface\)\] {
-  background-color: #181c20 !important;
+  background-color: #191c20 !important;
 }
 
 html[data-theme="dark"] .bg-\[var\(--color-surface-subtle\)\] {
-  background-color: #222830 !important;
+  background-color: #232830 !important;
 }
 
 :root[data-theme="dark"] .flowdesk-markdown {
@@ -214,14 +214,14 @@ select:focus-visible {
 }
 
 .flowdesk-markdown {
-  color: #24313c;
+  color: #27313b;
   font-size: 14px;
   line-height: 1.72;
 }
 
 .flowdesk-markdown h1 {
   margin: 0 0 18px;
-  color: #101820;
+  color: #1d1d1f;
   font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
@@ -229,7 +229,7 @@ select:focus-visible {
 
 .flowdesk-markdown h2 {
   margin: 26px 0 10px;
-  color: #173f3d;
+  color: #1f4e79;
   font-size: 17px;
   font-weight: 700;
 }
@@ -266,16 +266,16 @@ select:focus-visible {
 }
 
 .flowdesk-markdown th {
-  background: #eef3f1;
-  color: #273640;
+  background: #eef4fb;
+  color: #26323d;
   font-weight: 700;
 }
 
 .flowdesk-markdown code {
   border-radius: 5px;
-  background: #eef3f1;
+  background: #eef4fb;
   padding: 2px 5px;
-  color: #9a3412;
+  color: #8a3f00;
   font-size: 12px;
 }
 
@@ -283,9 +283,9 @@ select:focus-visible {
   overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: #17212b;
+  background: #17202a;
   padding: 14px;
-  color: #eef7f4;
+  color: #f5f7fa;
 }
 
 .flowdesk-markdown pre code {
