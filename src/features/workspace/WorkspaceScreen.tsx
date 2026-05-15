@@ -25,7 +25,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { clsx } from "clsx";
@@ -34,9 +34,16 @@ import type { LucideIcon } from "lucide-react";
 import type { Project, Task, TaskPriority, TaskStatus, TimelineEvent, WorkspaceView } from "../../domain/workspace";
 import { formatDateTime, formatDuration, formatShortDate, getElapsedMinutes } from "../../lib/date";
 import {
+  revealSavedProjectRecord,
+  saveProjectRecord,
+  type ExportFormat,
+} from "../../lib/exportProjectRecord";
+import type { WorkspacePersistenceMode } from "../../lib/persistence/workspaceRepository";
+import {
   useWorkspaceStore,
   type CreateProjectInput,
   type CreateTaskInput,
+  type PersistenceStatus,
   type UpdateProjectInput,
 } from "../../stores/workspaceStore";
 
@@ -79,6 +86,13 @@ const priorityClasses: Record<TaskPriority, string> = {
 
 type ThemeMode = "system" | "light" | "dark";
 
+type ExportSaveState =
+  | { status: "saving"; format: ExportFormat }
+  | { status: "saved"; format: ExportFormat; path: string }
+  | { status: "downloaded"; format: ExportFormat; fileName: string }
+  | { status: "cancelled"; format: ExportFormat }
+  | { status: "error"; format: ExportFormat; message: string };
+
 function getStoredThemeMode(): ThemeMode {
   const storedThemeMode = window.localStorage.getItem("flowdesk.themeMode");
 
@@ -99,6 +113,127 @@ function resolveThemeMode(themeMode: ThemeMode): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "The operation could not be completed.";
+}
+
+function formatExportFormat(format: ExportFormat): string {
+  return format === "markdown" ? "Markdown" : "JSON";
+}
+
+function formatAriaShortcut(shortcut: string): string {
+  if (!shortcut.startsWith("Command/Ctrl+")) {
+    return shortcut;
+  }
+
+  const key = shortcut.replace("Command/Ctrl+", "");
+
+  return `Meta+${key} Control+${key}`;
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable ||
+    target.closest(".cm-editor") !== null
+  );
+}
+
+function useRestoreFocus(isOpen: boolean): void {
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      return undefined;
+    }
+
+    const rememberFocusedElement = () => {
+      if (document.activeElement instanceof HTMLElement && document.activeElement.closest('[role="dialog"]') === null) {
+        previousFocusRef.current = document.activeElement;
+      }
+    };
+
+    rememberFocusedElement();
+    document.addEventListener("focusin", rememberFocusedElement);
+
+    return () => document.removeEventListener("focusin", rememberFocusedElement);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    return () => {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [isOpen]);
+}
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => element.offsetParent !== null || element === document.activeElement);
+}
+
+function useDialogControls<T extends HTMLElement>(isOpen: boolean, onClose: () => void) {
+  const dialogRef = useRef<T | null>(null);
+
+  useRestoreFocus(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  return dialogRef;
+}
+
 export function WorkspaceScreen() {
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isCreateTaskDialogOpen, setIsCreateTaskDialogOpen] = useState(false);
@@ -106,6 +241,7 @@ export function WorkspaceScreen() {
   const [pendingProjectDeleteId, setPendingProjectDeleteId] = useState<string | null>(null);
   const [pendingNoteDeleteId, setPendingNoteDeleteId] = useState<string | null>(null);
   const [pendingTaskDeleteId, setPendingTaskDeleteId] = useState<string | null>(null);
+  const [exportSaveState, setExportSaveState] = useState<ExportSaveState | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
   const projects = useWorkspaceStore((state) => state.projects);
   const notes = useWorkspaceStore((state) => state.notes);
@@ -116,6 +252,10 @@ export function WorkspaceScreen() {
   const selectedNoteId = useWorkspaceStore((state) => state.selectedNoteId);
   const activeView = useWorkspaceStore((state) => state.activeView);
   const exportPreview = useWorkspaceStore((state) => state.exportPreview);
+  const persistenceMode = useWorkspaceStore((state) => state.persistenceMode);
+  const persistenceStatus = useWorkspaceStore((state) => state.persistenceStatus);
+  const persistenceError = useWorkspaceStore((state) => state.persistenceError);
+  const lastPersistedAt = useWorkspaceStore((state) => state.lastPersistedAt);
   const selectProject = useWorkspaceStore((state) => state.selectProject);
   const selectNote = useWorkspaceStore((state) => state.selectNote);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -157,6 +297,77 @@ export function WorkspaceScreen() {
   const handleCreateTask = (input: CreateTaskInput) => {
     createTask(input);
     closeCreateTaskDialog();
+  };
+
+  const handlePrepareMarkdownExport = () => {
+    setExportSaveState(null);
+    prepareMarkdownExport();
+  };
+
+  const handlePrepareJsonExport = () => {
+    setExportSaveState(null);
+    prepareJsonExport();
+  };
+
+  const handleSaveProjectRecord = async (format: ExportFormat) => {
+    if (!selectedProject) {
+      return;
+    }
+
+    setExportSaveState({ status: "saving", format });
+
+    const content = format === "markdown" ? prepareMarkdownExport() : prepareJsonExport();
+
+    if (!content) {
+      setExportSaveState({
+        status: "error",
+        format,
+        message: "There is no project record to export.",
+      });
+      return;
+    }
+
+    try {
+      const result = await saveProjectRecord({
+        projectTitle: selectedProject.title,
+        format,
+        content,
+      });
+
+      if (result.status === "saved") {
+        setExportSaveState({ status: "saved", format, path: result.path });
+        return;
+      }
+
+      if (result.status === "downloaded") {
+        setExportSaveState({ status: "downloaded", format, fileName: result.fileName });
+        return;
+      }
+
+      setExportSaveState({ status: "cancelled", format });
+    } catch (error: unknown) {
+      setExportSaveState({
+        status: "error",
+        format,
+        message: getErrorMessage(error),
+      });
+    }
+  };
+
+  const handleRevealSavedExport = async () => {
+    if (exportSaveState?.status !== "saved") {
+      return;
+    }
+
+    try {
+      await revealSavedProjectRecord(exportSaveState.path);
+    } catch (error: unknown) {
+      setExportSaveState({
+        status: "error",
+        format: exportSaveState.format,
+        message: getErrorMessage(error),
+      });
+    }
   };
 
   const handleUpdateProject = (input: UpdateProjectInput) => {
@@ -218,6 +429,82 @@ export function WorkspaceScreen() {
     return () => colorSchemeQuery.removeListener(applyTheme);
   }, [themeMode]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const hasCommandModifier = event.metaKey || event.ctrlKey;
+
+      if (!hasCommandModifier || event.altKey) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if (key === "k") {
+        event.preventDefault();
+        document.getElementById("flowdesk-project-search")?.focus();
+        return;
+      }
+
+      if (isTextEntryTarget(event.target)) {
+        return;
+      }
+
+      const viewIndex = Number.parseInt(key, 10) - 1;
+
+      if (viewIndex >= 0 && viewIndex < viewItems.length) {
+        event.preventDefault();
+        setActiveView(viewItems[viewIndex].id);
+        return;
+      }
+
+      if (key === "n") {
+        event.preventDefault();
+
+        if (event.shiftKey || !selectedProject || !canEditProject) {
+          setIsCreateProjectDialogOpen(true);
+          return;
+        }
+
+        createNote();
+        return;
+      }
+
+      if (key === "e" && selectedProject) {
+        event.preventDefault();
+        handlePrepareMarkdownExport();
+        return;
+      }
+
+      if (event.key === "Enter" && selectedProject && canEditProject) {
+        event.preventDefault();
+
+        if (activeSession) {
+          endActiveSession();
+          return;
+        }
+
+        startSession();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    activeSession,
+    canEditProject,
+    createNote,
+    endActiveSession,
+    handlePrepareMarkdownExport,
+    selectedProject,
+    setActiveView,
+    startSession,
+  ]);
+
+  if (persistenceStatus === "hydrating") {
+    return <WorkspaceBootView themeMode={themeMode} onChangeTheme={setThemeMode} />;
+  }
+
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-[var(--color-app-bg)] text-[var(--color-ink)] lg:h-screen lg:min-h-[720px] lg:flex-row lg:overflow-hidden">
       <ProjectSidebar
@@ -230,6 +517,10 @@ export function WorkspaceScreen() {
         onRestoreProject={restoreProject}
         themeMode={themeMode}
         onChangeTheme={setThemeMode}
+        persistenceMode={persistenceMode}
+        persistenceStatus={persistenceStatus}
+        persistenceError={persistenceError}
+        lastPersistedAt={lastPersistedAt}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         {selectedProject ? (
@@ -242,13 +533,14 @@ export function WorkspaceScreen() {
               onCreateTask={openCreateTaskDialog}
               onStartSession={startSession}
               onEndSession={endActiveSession}
-              onPrepareMarkdownExport={prepareMarkdownExport}
+              onPrepareMarkdownExport={handlePrepareMarkdownExport}
               onArchiveProject={() => archiveProject(selectedProject.id)}
               onRestoreProject={() => restoreProject(selectedProject.id)}
               onOpenSettings={() => setIsProjectSettingsOpen(true)}
             />
             <ViewTabs activeView={activeView} onSelectView={setActiveView} />
             <section className="min-h-0 flex-1 overflow-visible px-3 pb-5 sm:px-5 lg:overflow-hidden">
+              {persistenceStatus === "error" && <PersistenceAlert error={persistenceError} />}
               {activeView === "overview" && (
                 <OverviewView
                   project={selectedProject}
@@ -303,8 +595,11 @@ export function WorkspaceScreen() {
               {activeView === "exports" && (
                 <ExportsView
                   exportPreview={exportPreview}
-                  onPrepareMarkdownExport={prepareMarkdownExport}
-                  onPrepareJsonExport={prepareJsonExport}
+                  exportSaveState={exportSaveState}
+                  onPrepareMarkdownExport={handlePrepareMarkdownExport}
+                  onPrepareJsonExport={handlePrepareJsonExport}
+                  onSaveProjectRecord={handleSaveProjectRecord}
+                  onRevealSavedExport={handleRevealSavedExport}
                 />
               )}
             </section>
@@ -349,6 +644,43 @@ export function WorkspaceScreen() {
         onConfirm={handleConfirmTaskDelete}
       />
     </div>
+  );
+}
+
+function WorkspaceBootView({
+  themeMode,
+  onChangeTheme,
+}: {
+  themeMode: ThemeMode;
+  onChangeTheme: (themeMode: ThemeMode) => void;
+}) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[var(--color-app-bg)] px-6 text-[var(--color-ink)]">
+      <section
+        className="w-full max-w-[420px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-soft)]"
+        aria-live="polite"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[var(--color-accent)] text-white">
+              <PanelLeft size={18} />
+            </span>
+            <div>
+              <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">FlowDesk</h1>
+              <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Opening local workspace</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1" aria-label="Theme">
+            <IconButton label="Use system theme" icon={Monitor} isActive={themeMode === "system"} onClick={() => onChangeTheme("system")} />
+            <IconButton label="Use light theme" icon={Sun} isActive={themeMode === "light"} onClick={() => onChangeTheme("light")} />
+            <IconButton label="Use dark theme" icon={Moon} isActive={themeMode === "dark"} onClick={() => onChangeTheme("dark")} />
+          </div>
+        </div>
+        <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-subtle)]">
+          <div className="h-full w-1/2 rounded-full bg-[var(--color-accent)] motion-safe:animate-pulse" />
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -532,6 +864,7 @@ function ProjectAccentPicker({
             key={accentOption}
             type="button"
             aria-label={`Use ${accentOption} project color`}
+            aria-pressed={value === accentOption}
             onClick={() => onChange(accentOption)}
             className={clsx(
               "h-8 w-8 rounded-md border-2 transition",
@@ -558,22 +891,18 @@ function CreateProjectDialog({
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [accent, setAccent] = useState<Project["accent"]>("teal");
+  const dialogRef = useDialogControls<HTMLFormElement>(isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen) {
-      return undefined;
+      return;
     }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+    setTitle("");
+    setDescription("");
+    setTags("");
+    setAccent("teal");
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -603,6 +932,7 @@ function CreateProjectDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
       <form
+        ref={dialogRef}
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
@@ -668,22 +998,18 @@ function CreateTaskDialog({
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [dueDate, setDueDate] = useState("");
   const [tags, setTags] = useState("");
+  const dialogRef = useDialogControls<HTMLFormElement>(isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen) {
-      return undefined;
+      return;
     }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+    setTitle("");
+    setPriority("medium");
+    setDueDate("");
+    setTags("");
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -712,6 +1038,7 @@ function CreateTaskDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
       <form
+        ref={dialogRef}
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
@@ -746,6 +1073,7 @@ function CreateTaskDialog({
                   key={priorityOption}
                   type="button"
                   onClick={() => setPriority(priorityOption)}
+                  aria-pressed={priority === priorityOption}
                   className={clsx(
                     "h-9 rounded-md border px-3 text-[12px] font-semibold whitespace-nowrap capitalize transition",
                     priority === priorityOption
@@ -808,27 +1136,18 @@ function ProjectSettingsDialog({
   const [description, setDescription] = useState(project.description);
   const [tags, setTags] = useState(project.tags.join(", "));
   const [accent, setAccent] = useState<Project["accent"]>(project.accent);
+  const dialogRef = useDialogControls<HTMLFormElement>(isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen) {
-      return undefined;
+      return;
     }
 
     setTitle(project.title);
     setDescription(project.description);
     setTags(project.tags.join(", "));
     setAccent(project.accent);
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, project]);
+  }, [isOpen, project]);
 
   if (!isOpen) {
     return null;
@@ -854,6 +1173,7 @@ function ProjectSettingsDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
       <form
+        ref={dialogRef}
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
@@ -931,21 +1251,18 @@ function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onCancel);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+
   useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCancel();
-      }
-    };
+    const focusFrame = window.requestAnimationFrame(() => cancelButtonRef.current?.focus());
 
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onCancel]);
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -954,6 +1271,7 @@ function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm" onMouseDown={onCancel}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
@@ -971,7 +1289,9 @@ function ConfirmDialog({
         </div>
         <div className="mt-5 flex items-center justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4">
           <button
+            ref={cancelButtonRef}
             type="button"
+            autoFocus
             onClick={onCancel}
             className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
           >
@@ -1000,6 +1320,10 @@ interface ProjectSidebarProps {
   onRestoreProject: (projectId: string) => void;
   themeMode: ThemeMode;
   onChangeTheme: (themeMode: ThemeMode) => void;
+  persistenceMode: WorkspacePersistenceMode;
+  persistenceStatus: PersistenceStatus;
+  persistenceError: string | null;
+  lastPersistedAt: string | null;
 }
 
 function ProjectSidebar({
@@ -1012,6 +1336,10 @@ function ProjectSidebar({
   onRestoreProject,
   themeMode,
   onChangeTheme,
+  persistenceMode,
+  persistenceStatus,
+  persistenceError,
+  lastPersistedAt,
 }: ProjectSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
@@ -1026,7 +1354,7 @@ function ProjectSidebar({
   const archivedProjects = visibleProjects.filter((project) => project.status === "archived");
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-[var(--color-border)] bg-white lg:w-[292px] lg:border-b-0 lg:border-r">
+    <aside className="flex w-full shrink-0 flex-col border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:w-[292px] lg:border-b-0 lg:border-r">
       <div className="border-b border-[var(--color-border)] px-4 py-4">
         <div className="flex items-center justify-between">
           <div>
@@ -1042,8 +1370,10 @@ function ProjectSidebar({
         <label className="mt-4 flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 text-[13px] text-[var(--color-muted)]">
           <Search size={15} />
           <input
+            id="flowdesk-project-search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
+            aria-label="Search projects"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-slate-800 outline-none placeholder:text-slate-400"
             placeholder="Search projects"
           />
@@ -1117,18 +1447,24 @@ function ProjectSidebar({
         )}
       </div>
 
-      {projects.length > 0 && (
-        <div className="border-t border-[var(--color-border)] p-3">
+      <div className="border-t border-[var(--color-border)] p-3">
+        <PersistenceStatusBadge
+          mode={persistenceMode}
+          status={persistenceStatus}
+          error={persistenceError}
+          lastPersistedAt={lastPersistedAt}
+        />
+        {projects.length > 0 && (
           <button
             type="button"
             onClick={onCreateProject}
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white shadow-sm transition hover:bg-[var(--color-accent-strong)]"
+            className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white shadow-sm transition hover:bg-[var(--color-accent-strong)]"
           >
             <Plus size={15} />
             New Project
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </aside>
   );
 }
@@ -1141,6 +1477,61 @@ function SidebarSection({ title, children }: { title: string; children: ReactNod
       </div>
       <div className="space-y-1">{children}</div>
     </section>
+  );
+}
+
+function PersistenceStatusBadge({
+  mode,
+  status,
+  error,
+  lastPersistedAt,
+}: {
+  mode: WorkspacePersistenceMode;
+  status: PersistenceStatus;
+  error: string | null;
+  lastPersistedAt: string | null;
+}) {
+  const label =
+    status === "hydrating"
+      ? "Opening workspace"
+      : status === "saving"
+        ? "Saving locally"
+        : status === "error"
+          ? "Storage issue"
+          : mode === "sqlite"
+            ? "SQLite saved"
+            : "Browser saved";
+  const detail =
+    status === "saving"
+      ? "Writing workspace records"
+      : status === "error"
+        ? (error ?? "FlowDesk could not save changes.")
+        : lastPersistedAt
+          ? `Updated ${formatDateTime(lastPersistedAt)}`
+          : "Local records are current";
+  const dotClass =
+    status === "error"
+      ? "bg-red-500"
+      : status === "saving" || status === "hydrating"
+        ? "bg-[var(--color-accent)] motion-safe:animate-pulse"
+        : "bg-emerald-500";
+
+  return (
+    <div
+      className={clsx(
+        "rounded-md border px-3 py-2",
+        status === "error"
+          ? "border-red-200 bg-red-50"
+          : "border-[var(--color-border)] bg-[var(--color-app-bg)]",
+      )}
+      aria-live={status === "error" || status === "saving" ? "polite" : "off"}
+    >
+      <div className="flex items-center gap-2">
+        <span className={clsx("h-2 w-2 shrink-0 rounded-full", dotClass)} />
+        <span className="truncate text-[12px] font-semibold text-[var(--color-ink)]">{label}</span>
+      </div>
+      <p className="mt-1 truncate text-[11px] text-[var(--color-muted)]">{detail}</p>
+    </div>
   );
 }
 
@@ -1163,12 +1554,13 @@ function ProjectRow({
     <div
       className={clsx(
         "group flex w-full items-center gap-1 rounded-md px-2 py-2 transition",
-        isSelected ? "bg-blue-50 text-[var(--color-ink)]" : "text-slate-700 hover:bg-slate-50",
+        isSelected ? "bg-[var(--color-selection)] text-[var(--color-ink)]" : "text-slate-700 hover:bg-[var(--color-surface-subtle)]",
       )}
     >
       <button
         type="button"
         onClick={() => onSelectProject(project.id)}
+        aria-current={isSelected ? "page" : undefined}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <span
@@ -1195,7 +1587,7 @@ function ProjectRow({
           aria-label={project.isPinned ? `Unpin ${project.title}` : `Pin ${project.title}`}
           title={project.isPinned ? "Unpin project" : "Pin project"}
           onClick={() => onToggleProjectPinned(project.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-white hover:text-[var(--color-accent)] lg:opacity-0 lg:group-hover:opacity-100"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:opacity-0 lg:group-hover:opacity-100"
         >
           <Pin size={13} />
         </button>
@@ -1206,7 +1598,7 @@ function ProjectRow({
           aria-label={`Restore ${project.title}`}
           title="Restore project"
           onClick={() => onRestoreProject(project.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-white hover:text-[var(--color-accent)] lg:opacity-0 lg:group-hover:opacity-100"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:opacity-0 lg:group-hover:opacity-100"
         >
           <ArchiveRestore size={13} />
         </button>
@@ -1216,7 +1608,7 @@ function ProjectRow({
           aria-label={`Archive ${project.title}`}
           title="Archive project"
           onClick={() => onArchiveProject(project.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-white hover:text-amber-700 lg:opacity-0 lg:group-hover:opacity-100"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-[var(--color-surface)] hover:text-amber-700 lg:opacity-0 lg:group-hover:opacity-100"
         >
           <Archive size={13} />
         </button>
@@ -1252,7 +1644,7 @@ function WorkspaceHeader({
   onOpenSettings: () => void;
 }) {
   return (
-    <header className="border-b border-[var(--color-border)] bg-white px-5 py-4">
+    <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
       <div className="flex flex-col items-start justify-between gap-4 xl:flex-row">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -1287,6 +1679,7 @@ function WorkspaceHeader({
               <button
                 type="button"
                 aria-label="End Session"
+                aria-keyshortcuts="Meta+Enter Control+Enter"
                 title="End Session"
                 onClick={onEndSession}
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-0 rounded-md border border-red-200 bg-red-50 px-2 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100 sm:gap-2 sm:px-3"
@@ -1299,18 +1692,19 @@ function WorkspaceHeader({
               <button
                 type="button"
                 aria-label="Start Session"
+                aria-keyshortcuts="Meta+Enter Control+Enter"
                 title="Start Session"
                 onClick={onStartSession}
-                className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-accent)] bg-blue-50 px-0 text-[13px] font-semibold whitespace-nowrap text-[var(--color-accent)] transition hover:bg-slate-50 sm:w-auto sm:gap-2 sm:px-3"
+                className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-accent)] bg-[var(--color-selection)] px-0 text-[13px] font-semibold whitespace-nowrap text-[var(--color-accent)] transition hover:bg-[var(--color-surface-subtle)] sm:w-auto sm:gap-2 sm:px-3"
               >
                 <Play size={14} />
                 <span className="hidden sm:inline">Start Session</span>
               </button>
             )
           )}
-          {canEditProject && <ActionButton icon={NotebookText} label="New Note" onClick={onCreateNote} />}
+          {canEditProject && <ActionButton icon={NotebookText} label="New Note" shortcut="Command/Ctrl+N" onClick={onCreateNote} />}
           {canEditProject && <ActionButton icon={ListChecks} label="New Task" onClick={onCreateTask} />}
-          <ActionButton icon={Download} label="Export" onClick={onPrepareMarkdownExport} />
+          <ActionButton icon={Download} label="Export" shortcut="Command/Ctrl+E" onClick={onPrepareMarkdownExport} />
           {project.status === "active" ? (
             <ActionButton icon={Archive} label="Archive" onClick={onArchiveProject} />
           ) : (
@@ -1325,16 +1719,19 @@ function WorkspaceHeader({
 
 function ViewTabs({ activeView, onSelectView }: { activeView: WorkspaceView; onSelectView: (view: WorkspaceView) => void }) {
   return (
-    <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-white px-3 sm:px-5">
-      {viewItems.map((item) => {
+    <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:px-5">
+      {viewItems.map((item, index) => {
         const Icon = item.icon;
+        const shortcut = `Command/Ctrl+${index + 1}`;
 
         return (
           <button
             key={item.id}
             type="button"
             aria-label={item.label}
-            title={item.label}
+            aria-current={activeView === item.id ? "page" : undefined}
+            aria-keyshortcuts={formatAriaShortcut(shortcut)}
+            title={`${item.label} (${shortcut})`}
             onClick={() => onSelectView(item.id)}
             className={clsx(
               "inline-flex h-8 w-10 shrink-0 items-center justify-center gap-0 rounded-md px-0 text-[13px] font-semibold whitespace-nowrap transition sm:w-auto sm:gap-2 sm:px-3",
@@ -1398,12 +1795,12 @@ function OverviewView({
           <MetricPanel label="Timeline" value={timelineEvents.length.toString()} detail="Project events" icon={Clock3} />
         </div>
 
-        <div className="grid min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)] lg:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="grid min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)] lg:grid-cols-[300px_minmax(0,1fr)]">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-app-bg)] lg:border-b-0 lg:border-r">
             <PanelHeader title="Project Notes" detail={`${project.title} / ${notes.length} notes`} />
             <div className="space-y-1 p-3">
               {notes.length === 0 ? (
-                <div className="rounded-md border border-dashed border-[var(--color-border)] bg-white px-3 py-4 text-center">
+                <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-4 text-center">
                   <p className="text-[13px] font-semibold text-slate-900">No notes yet</p>
                   <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">Notes will appear here.</p>
                 </div>
@@ -1417,7 +1814,7 @@ function OverviewView({
                       "w-full rounded-md border px-3 py-2 text-left transition",
                       selectedNote?.id === note.id
                         ? "border-[var(--color-accent)] bg-[var(--color-selection)]"
-                        : "border-transparent hover:border-slate-200 hover:bg-white",
+                        : "border-transparent hover:border-slate-200 hover:bg-[var(--color-surface)]",
                     )}
                   >
                     <span className="block truncate text-[13px] font-semibold text-slate-900">{note.title || "Untitled note"}</span>
@@ -1488,12 +1885,12 @@ function NotesView({
   const selectedNote = notes.find((note) => note.id === selectedNoteId);
 
   return (
-    <div className="grid h-auto min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)] xl:h-full xl:grid-cols-[280px_minmax(0,1fr)_minmax(320px,0.8fr)]">
+    <div className="grid h-auto min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)] xl:h-full xl:grid-cols-[280px_minmax(0,1fr)_minmax(320px,0.8fr)]">
       <aside className="min-h-0 border-b border-[var(--color-border)] bg-[var(--color-app-bg)] xl:border-b-0 xl:border-r">
         <PanelHeader title="Notes" detail="Folders and records" />
         <div className="space-y-1 p-3">
           {notes.length === 0 ? (
-            <div className="rounded-md border border-dashed border-[var(--color-border)] bg-white px-3 py-4 text-center">
+            <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-4 text-center">
               <p className="text-[13px] font-semibold text-slate-900">No notes yet</p>
               <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">Create the first durable record for this project.</p>
               {canEditProject && (
@@ -1515,7 +1912,7 @@ function NotesView({
                 onClick={() => onSelectNote(note.id)}
                 className={clsx(
                   "w-full rounded-md px-3 py-2 text-left transition",
-                  note.id === selectedNoteId ? "bg-[var(--color-selection)]" : "hover:bg-white",
+                  note.id === selectedNoteId ? "bg-[var(--color-selection)]" : "hover:bg-[var(--color-surface)]",
                 )}
               >
                 <span className="block truncate text-[13px] font-semibold text-slate-900">{note.title || "Untitled note"}</span>
@@ -1622,7 +2019,7 @@ function TasksView({
   return (
     <div className="grid h-auto min-h-0 grid-cols-1 gap-4 pt-5 md:grid-cols-2 xl:h-full xl:grid-cols-4">
       {groupedStatuses.map((status) => (
-        <section key={status} className="min-h-0 rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
+        <section key={status} className="min-h-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
           <PanelHeader title={taskStatusLabels[status]} detail={`${tasks.filter((task) => task.status === status).length} tasks`} />
           <div className="space-y-3 p-3">
             {tasks.filter((task) => task.status === status).length === 0 ? (
@@ -1683,7 +2080,7 @@ function SessionsView({
         onUpdateActiveSessionNotes={onUpdateActiveSessionNotes}
         onEndSession={onEndSession}
       />
-      <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
+      <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
         <PanelHeader title="Session History" detail="Actual work blocks over time" />
         <div className="min-h-0 divide-y divide-[var(--color-border)] overflow-y-auto">
           {sessions.length === 0 ? (
@@ -1721,7 +2118,7 @@ function SessionsView({
 function TimelineView({ timelineEvents }: { timelineEvents: TimelineEvent[] }) {
   return (
     <div className="h-auto min-h-0 pt-5 xl:h-full">
-      <section className="h-auto min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)] xl:h-full">
+      <section className="h-auto min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)] xl:h-full">
         <PanelHeader title="Timeline" detail="A durable history of project activity" />
         <div className="min-h-0 overflow-y-auto px-6 py-4">
           <TimelineList timelineEvents={timelineEvents} />
@@ -1733,16 +2130,22 @@ function TimelineView({ timelineEvents }: { timelineEvents: TimelineEvent[] }) {
 
 function ExportsView({
   exportPreview,
+  exportSaveState,
   onPrepareMarkdownExport,
   onPrepareJsonExport,
+  onSaveProjectRecord,
+  onRevealSavedExport,
 }: {
   exportPreview: string;
+  exportSaveState: ExportSaveState | null;
   onPrepareMarkdownExport: () => void;
   onPrepareJsonExport: () => void;
+  onSaveProjectRecord: (format: ExportFormat) => void;
+  onRevealSavedExport: () => void;
 }) {
   return (
     <div className="grid h-auto min-h-0 grid-cols-1 gap-5 pt-5 lg:grid-cols-[320px_minmax(0,1fr)] xl:h-full">
-      <section className="rounded-lg border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-soft)]">
+      <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)]">
         <h3 className="text-[15px] font-semibold text-slate-950">Export Records</h3>
         <p className="mt-2 text-[13px] leading-6 text-[var(--color-muted)]">
           Exports are generated from project records rather than rendered UI, so records stay stable as the app evolves.
@@ -1754,19 +2157,44 @@ function ExportsView({
             className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white"
           >
             <Download size={15} />
-            Generate Markdown
+            Preview Markdown
           </button>
           <button
             type="button"
             onClick={onPrepareJsonExport}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700"
           >
             <Database size={15} />
-            Generate Project JSON
+            Preview Project JSON
           </button>
         </div>
+
+        <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+          <p className="text-[12px] font-semibold uppercase text-[var(--color-muted)]">Save file</p>
+          <div className="mt-3 space-y-2">
+            <button
+              type="button"
+              onClick={() => onSaveProjectRecord("markdown")}
+              disabled={exportSaveState?.status === "saving"}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              <Download size={15} />
+              Save Markdown...
+            </button>
+            <button
+              type="button"
+              onClick={() => onSaveProjectRecord("json")}
+              disabled={exportSaveState?.status === "saving"}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              <Database size={15} />
+              Save JSON...
+            </button>
+          </div>
+          <ExportStatusMessage exportSaveState={exportSaveState} onRevealSavedExport={onRevealSavedExport} />
+        </div>
       </section>
-      <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
+      <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
         <PanelHeader title="Export Preview" detail="Portable project record" />
         <pre className="h-full overflow-auto whitespace-pre-wrap p-5 text-[13px] leading-6 text-slate-800">
           {exportPreview || "Choose an export format to prepare a portable project record."}
@@ -1776,9 +2204,103 @@ function ExportsView({
   );
 }
 
+function ExportStatusMessage({
+  exportSaveState,
+  onRevealSavedExport,
+}: {
+  exportSaveState: ExportSaveState | null;
+  onRevealSavedExport: () => void;
+}) {
+  if (!exportSaveState) {
+    return (
+      <p className="mt-3 rounded-md bg-[var(--color-app-bg)] px-3 py-2 text-[12px] leading-5 text-[var(--color-muted)]">
+        Save uses the native file picker in the desktop app.
+      </p>
+    );
+  }
+
+  if (exportSaveState.status === "saving") {
+    return (
+      <p
+        className="mt-3 rounded-md bg-[var(--color-selection)] px-3 py-2 text-[12px] font-medium leading-5 text-[var(--color-accent)]"
+        role="status"
+        aria-live="polite"
+      >
+        Saving {formatExportFormat(exportSaveState.format)} project record...
+      </p>
+    );
+  }
+
+  if (exportSaveState.status === "saved") {
+    return (
+      <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2" role="status" aria-live="polite">
+        <p className="truncate text-[12px] font-semibold text-emerald-800">
+          Saved {formatExportFormat(exportSaveState.format)} record.
+        </p>
+        <button
+          type="button"
+          onClick={onRevealSavedExport}
+          className="mt-2 h-8 rounded-md border border-emerald-200 bg-[var(--color-surface)] px-3 text-[12px] font-semibold whitespace-nowrap text-emerald-800 transition hover:bg-emerald-100"
+        >
+          Reveal in Folder
+        </button>
+      </div>
+    );
+  }
+
+  if (exportSaveState.status === "downloaded") {
+    return (
+      <p
+        className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-semibold leading-5 text-emerald-800"
+        role="status"
+        aria-live="polite"
+      >
+        Downloaded {exportSaveState.fileName}.
+      </p>
+    );
+  }
+
+  if (exportSaveState.status === "cancelled") {
+    return (
+      <p
+        className="mt-3 rounded-md bg-[var(--color-app-bg)] px-3 py-2 text-[12px] leading-5 text-[var(--color-muted)]"
+        role="status"
+        aria-live="polite"
+      >
+        {formatExportFormat(exportSaveState.format)} export was cancelled.
+      </p>
+    );
+  }
+
+  return (
+    <p
+      className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-semibold leading-5 text-red-700"
+      role="alert"
+    >
+      {exportSaveState.message}
+    </p>
+  );
+}
+
+function PersistenceAlert({ error }: { error: string | null }) {
+  return (
+    <div
+      className="mt-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800"
+      role="status"
+      aria-live="polite"
+    >
+      <Database size={16} className="mt-0.5 shrink-0" />
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold">FlowDesk could not save the latest changes.</p>
+        <p className="mt-1 text-[12px] leading-5">{error ?? "Keep the app open and try the action again."}</p>
+      </div>
+    </div>
+  );
+}
+
 function MetricPanel({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: LucideIcon }) {
   return (
-    <section className="rounded-lg border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-soft)]">
+    <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)]">
       <div className="flex items-center justify-between">
         <span className="text-[12px] font-semibold uppercase text-[var(--color-muted)]">{label}</span>
         <Icon size={16} className="text-[var(--color-accent)]" />
@@ -1805,7 +2327,7 @@ function SessionCard({
   onEndSession: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-[var(--color-border)] bg-white p-4 shadow-[var(--shadow-soft)]">
+    <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)]">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-[15px] font-semibold text-slate-950">Focus Session</h3>
@@ -1870,7 +2392,7 @@ function TaskStack({
   onDeleteTask: (taskId: string) => void;
 }) {
   return (
-    <section className="rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
+    <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
       <PanelHeader title="Task Stack" detail="Next commitments" />
       <div className="space-y-3 p-3">
         {tasks.length === 0 ? (
@@ -1916,7 +2438,7 @@ function TaskCard({
   onDeleteTask: (taskId: string) => void;
 }) {
   return (
-    <article className="rounded-md border border-[var(--color-border)] bg-white p-3">
+    <article className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
       <div className="flex items-start gap-2">
         <p className="min-w-0 flex-1 text-[13px] font-semibold leading-5 text-slate-950">{task.title}</p>
         {canEditProject && (
@@ -1951,6 +2473,7 @@ function TaskCard({
               key={status}
               type="button"
               aria-label={`Set task to ${taskStatusLabels[status]}`}
+              aria-pressed={task.status === status}
               title={taskStatusLabels[status]}
               onClick={() => onUpdateTaskStatus(task.id, status)}
               disabled={!canEditProject}
@@ -1977,7 +2500,7 @@ function TaskCard({
 
 function TimelineStack({ timelineEvents }: { timelineEvents: TimelineEvent[] }) {
   return (
-    <section className="rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
+    <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
       <PanelHeader title="Recent Timeline" detail="Latest project movement" />
       <div className="p-4">
         {timelineEvents.length === 0 ? (
@@ -2028,14 +2551,25 @@ function PanelHeader({ title, detail }: { title: string; detail: string }) {
   );
 }
 
-function ActionButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
+function ActionButton({
+  icon: Icon,
+  label,
+  shortcut,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  shortcut?: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       aria-label={label}
-      title={label}
+      aria-keyshortcuts={shortcut ? formatAriaShortcut(shortcut) : undefined}
+      title={shortcut ? `${label} (${shortcut})` : label}
       onClick={onClick}
-      className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-border)] bg-white px-0 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 sm:w-auto sm:gap-2 sm:px-3"
+      className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-0 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-[var(--color-surface-subtle)] sm:w-auto sm:gap-2 sm:px-3"
     >
       <Icon size={14} />
       <span className="hidden sm:inline">{label}</span>
@@ -2060,14 +2594,15 @@ function IconButton({
     <button
       type="button"
       aria-label={label}
+      aria-pressed={typeof isActive === "boolean" ? isActive : undefined}
       title={label}
       onClick={onClick}
       className={clsx(
         "flex items-center justify-center rounded-md border transition",
         size === "md" ? "h-9 w-9 shrink-0" : "h-8 w-8",
         isActive
-          ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]"
-          : "border-[var(--color-border)] bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950",
+          ? "border-[var(--color-accent)] bg-[var(--color-selection)] text-[var(--color-accent)]"
+          : "border-[var(--color-border)] bg-[var(--color-surface)] text-slate-600 hover:bg-[var(--color-surface-subtle)] hover:text-slate-950",
       )}
     >
       <Icon size={14} />

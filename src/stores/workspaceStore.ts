@@ -12,6 +12,8 @@ import type {
 import { getElapsedMinutes } from "../lib/date";
 import { getWorkspaceRepository, type WorkspacePersistenceMode } from "../lib/persistence/workspaceRepository";
 
+export type PersistenceStatus = "hydrating" | "saving" | "saved" | "error";
+
 export interface CreateProjectInput {
   title: string;
   description: string;
@@ -34,6 +36,9 @@ interface WorkspaceState extends WorkspaceSnapshot {
   selectedNoteId: string;
   exportPreview: string;
   persistenceMode: WorkspacePersistenceMode;
+  persistenceStatus: PersistenceStatus;
+  persistenceError: string | null;
+  lastPersistedAt: string | null;
   hydrateWorkspace: () => void;
   createProject: (input: CreateProjectInput) => void;
   updateProject: (projectId: string, input: UpdateProjectInput) => void;
@@ -54,8 +59,8 @@ interface WorkspaceState extends WorkspaceSnapshot {
   startSession: () => void;
   updateActiveSessionNotes: (notes: string) => void;
   endActiveSession: () => void;
-  prepareMarkdownExport: () => void;
-  prepareJsonExport: () => void;
+  prepareMarkdownExport: () => string | null;
+  prepareJsonExport: () => string | null;
   resetWorkspace: () => void;
 }
 
@@ -91,13 +96,44 @@ function getSnapshotFromState(state: WorkspaceState): WorkspaceSnapshot {
   };
 }
 
-function persistCurrentState(get: () => WorkspaceState): void {
-  const snapshot = getSnapshotFromState(get());
+let persistenceQueue: Promise<void> = Promise.resolve();
+let persistenceRevision = 0;
 
-  void getWorkspaceRepository()
-    .then((repository) => repository.saveWorkspace(snapshot))
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "FlowDesk could not save the workspace.";
+}
+
+function persistCurrentState(set: (partial: Partial<WorkspaceState>) => void, get: () => WorkspaceState): void {
+  const snapshot = getSnapshotFromState(get());
+  const revision = ++persistenceRevision;
+
+  set({ persistenceStatus: "saving", persistenceError: null });
+
+  persistenceQueue = persistenceQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const repository = await getWorkspaceRepository();
+
+      await repository.saveWorkspace(snapshot);
+
+      if (revision === persistenceRevision) {
+        set({
+          persistenceMode: repository.mode,
+          persistenceStatus: "saved",
+          persistenceError: null,
+          lastPersistedAt: new Date().toISOString(),
+        });
+      }
+    })
     .catch((error: unknown) => {
       console.error("Failed to persist FlowDesk workspace", error);
+
+      if (revision === persistenceRevision) {
+        set({
+          persistenceStatus: "error",
+          persistenceError: getErrorMessage(error),
+        });
+      }
     });
 }
 
@@ -184,11 +220,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   selectedNoteId: initialSelection.noteId,
   exportPreview: "",
   persistenceMode: "browser",
+  persistenceStatus: "hydrating",
+  persistenceError: null,
+  lastPersistedAt: null,
 
   hydrateWorkspace() {
     void getWorkspaceRepository()
       .then(async (repository) => {
         const storedSnapshot = await repository.loadWorkspace();
+        const now = new Date().toISOString();
 
         if (storedSnapshot) {
           const selection = getInitialSelection(storedSnapshot);
@@ -200,16 +240,28 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             activeView: "overview",
             exportPreview: "",
             persistenceMode: repository.mode,
+            persistenceStatus: "saved",
+            persistenceError: null,
+            lastPersistedAt: now,
           });
 
           return;
         }
 
-        set({ persistenceMode: repository.mode });
+        set({ persistenceMode: repository.mode, persistenceStatus: "saving", persistenceError: null });
         await repository.saveWorkspace(getSnapshotFromState(get()));
+        set({
+          persistenceStatus: "saved",
+          persistenceError: null,
+          lastPersistedAt: new Date().toISOString(),
+        });
       })
       .catch((error: unknown) => {
         console.error("Failed to hydrate FlowDesk workspace", error);
+        set({
+          persistenceStatus: "error",
+          persistenceError: getErrorMessage(error),
+        });
       });
   },
 
@@ -243,7 +295,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "overview",
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   updateProject(projectId, input) {
@@ -268,7 +320,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ),
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   deleteProject(projectId) {
@@ -295,7 +347,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "overview",
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   toggleProjectPinned(projectId) {
@@ -313,7 +365,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           : project,
       ),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   archiveProject(projectId) {
@@ -344,7 +396,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "overview",
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   restoreProject(projectId) {
@@ -365,7 +417,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "overview",
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   selectProject(projectId) {
@@ -415,7 +467,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ),
       projects: updateProjectTimestamp(state.projects, selectedNote.projectId, updatedAt),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   updateSelectedNoteContent(content) {
@@ -443,7 +495,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ),
       projects: updateProjectTimestamp(state.projects, selectedNote.projectId, updatedAt),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   createNote() {
@@ -478,7 +530,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ...state.timelineEvents,
       ],
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   deleteNote(noteId) {
@@ -501,7 +553,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       projects: updateProjectTimestamp(state.projects, note.projectId, now),
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   createTask(input) {
@@ -535,7 +587,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "tasks",
       projects: updateProjectTimestamp(state.projects, state.selectedProjectId, now),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   updateTaskStatus(taskId, status) {
@@ -572,7 +624,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       timelineEvents,
       projects: updateProjectTimestamp(state.projects, task.projectId, now),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   deleteTask(taskId) {
@@ -590,7 +642,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       projects: updateProjectTimestamp(state.projects, task.projectId, now),
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   startSession() {
@@ -628,7 +680,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       activeView: "sessions",
       projects: updateProjectTimestamp(state.projects, state.selectedProjectId, now),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   updateActiveSessionNotes(notes) {
@@ -654,7 +706,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ),
       projects: updateProjectTimestamp(state.projects, activeSession.projectId, updatedAt),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   endActiveSession() {
@@ -695,7 +747,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ],
       projects: updateProjectTimestamp(state.projects, activeSession.projectId, endedAt),
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 
   prepareMarkdownExport() {
@@ -703,44 +755,56 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const project = state.projects.find((candidateProject) => candidateProject.id === state.selectedProjectId);
 
     if (!project) {
-      return;
+      return null;
     }
 
     const projectNotes = state.notes.filter((note) => note.projectId === project.id);
     const projectTasks = state.tasks.filter((task) => task.projectId === project.id);
     const projectSessions = state.sessions.filter((session) => session.projectId === project.id);
+    const exportContent = buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions);
 
     set({
-      exportPreview: buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions),
+      exportPreview: exportContent,
       activeView: "exports",
       timelineEvents: [
         createTimelineEvent(project.id, "Export generated", "Prepared Markdown project record.", "export_generated"),
         ...state.timelineEvents,
       ],
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
+
+    return exportContent;
   },
 
   prepareJsonExport() {
     const state = get();
     const projectId = state.selectedProjectId;
+    const project = state.projects.find((candidateProject) => candidateProject.id === projectId);
+
+    if (!project) {
+      return null;
+    }
+
     const projectSnapshot = {
-      project: state.projects.find((project) => project.id === projectId),
+      project,
       notes: state.notes.filter((note) => note.projectId === projectId),
       tasks: state.tasks.filter((task) => task.projectId === projectId),
       sessions: state.sessions.filter((session) => session.projectId === projectId),
       timelineEvents: state.timelineEvents.filter((event) => event.projectId === projectId),
     };
+    const exportContent = JSON.stringify(projectSnapshot, null, 2);
 
     set({
-      exportPreview: JSON.stringify(projectSnapshot, null, 2),
+      exportPreview: exportContent,
       activeView: "exports",
       timelineEvents: [
         createTimelineEvent(projectId, "Export generated", "Prepared JSON project record.", "export_generated"),
         ...state.timelineEvents,
       ],
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
+
+    return exportContent;
   },
 
   resetWorkspace() {
@@ -753,6 +817,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       selectedNoteId: "",
       exportPreview: "",
     });
-    persistCurrentState(get);
+    persistCurrentState(set, get);
   },
 }));

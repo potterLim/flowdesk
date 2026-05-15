@@ -10,6 +10,7 @@ import type {
 } from "../../domain/workspace";
 
 const browserStorageKey = "flowdesk.workspace.snapshot.v1";
+const workspaceSchemaVersion = 1;
 
 export type WorkspacePersistenceMode = "browser" | "sqlite";
 
@@ -51,7 +52,7 @@ function createBrowserWorkspaceRepository(): WorkspaceRepository {
           return null;
         }
 
-        return JSON.parse(serializedSnapshot) as WorkspaceSnapshot;
+        return normalizeWorkspaceSnapshot(JSON.parse(serializedSnapshot));
       } catch {
         return null;
       }
@@ -232,6 +233,9 @@ async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
 
 async function initializeSchema(database: SqlDatabase): Promise<void> {
   await database.execute("PRAGMA foreign_keys = ON");
+  await database.execute("PRAGMA journal_mode = WAL");
+  await database.execute("PRAGMA synchronous = NORMAL");
+  await database.execute(`PRAGMA user_version = ${workspaceSchemaVersion}`);
   await database.execute(
     `CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
@@ -322,6 +326,257 @@ async function initializeSchema(database: SqlDatabase): Promise<void> {
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     )`,
   );
+}
+
+function normalizeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const projects = readArray(value.projects)
+    .map(normalizeProject)
+    .filter((project): project is Project => Boolean(project));
+
+  if (projects.length === 0) {
+    return null;
+  }
+
+  const projectIds = new Set(projects.map((project) => project.id));
+
+  return {
+    projects,
+    notes: readArray(value.notes)
+      .map(normalizeNote)
+      .filter((note): note is Note => Boolean(note && projectIds.has(note.projectId))),
+    tasks: readArray(value.tasks)
+      .map(normalizeTask)
+      .filter((task): task is Task => Boolean(task && projectIds.has(task.projectId))),
+    sessions: readArray(value.sessions)
+      .map(normalizeSession)
+      .filter((session): session is WorkSession => Boolean(session && projectIds.has(session.projectId))),
+    references: readArray(value.references)
+      .map(normalizeReference)
+      .filter((reference): reference is ReferenceRecord => Boolean(reference && projectIds.has(reference.projectId))),
+    files: readArray(value.files)
+      .map(normalizeFile)
+      .filter((file): file is WorkspaceFile => Boolean(file && projectIds.has(file.projectId))),
+    timelineEvents: readArray(value.timelineEvents)
+      .map(normalizeTimelineEvent)
+      .filter((event): event is TimelineEvent => Boolean(event && projectIds.has(event.projectId))),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function readString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readNullableNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeProject(value: unknown): Project | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const title = readString(value.title).trim();
+
+  if (!id || !title) {
+    return null;
+  }
+
+  const accent = readString(value.accent);
+  const status = readString(value.status);
+
+  return {
+    id,
+    title,
+    description: readString(value.description),
+    createdAt: readString(value.createdAt, new Date().toISOString()),
+    updatedAt: readString(value.updatedAt, new Date().toISOString()),
+    tags: readStringArray(value.tags),
+    status: status === "archived" ? "archived" : "active",
+    isPinned: value.isPinned === true,
+    accent: accent === "blue" || accent === "violet" || accent === "amber" || accent === "rose" ? accent : "teal",
+    icon: readString(value.icon, title.slice(0, 2).toUpperCase()),
+  };
+}
+
+function normalizeNote(value: unknown): Note | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const projectId = readString(value.projectId);
+
+  if (!id || !projectId) {
+    return null;
+  }
+
+  return {
+    id,
+    projectId,
+    title: readString(value.title, "Untitled note"),
+    folder: readString(value.folder, "Inbox"),
+    content: readString(value.content),
+    createdAt: readString(value.createdAt, new Date().toISOString()),
+    updatedAt: readString(value.updatedAt, new Date().toISOString()),
+  };
+}
+
+function normalizeTask(value: unknown): Task | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const projectId = readString(value.projectId);
+  const status = readString(value.status);
+  const priority = readString(value.priority);
+
+  if (!id || !projectId) {
+    return null;
+  }
+
+  return {
+    id,
+    projectId,
+    title: readString(value.title, "Untitled task"),
+    status: status === "in_progress" || status === "done" || status === "archived" ? status : "todo",
+    priority: priority === "low" || priority === "high" || priority === "urgent" ? priority : "medium",
+    dueDate: readNullableString(value.dueDate),
+    tags: readStringArray(value.tags),
+    linkedSessionId: readNullableString(value.linkedSessionId),
+    createdAt: readString(value.createdAt, new Date().toISOString()),
+    updatedAt: readString(value.updatedAt, new Date().toISOString()),
+  };
+}
+
+function normalizeSession(value: unknown): WorkSession | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const projectId = readString(value.projectId);
+
+  if (!id || !projectId) {
+    return null;
+  }
+
+  return {
+    id,
+    projectId,
+    title: readString(value.title, "Focus session"),
+    notes: readString(value.notes),
+    startedAt: readString(value.startedAt, new Date().toISOString()),
+    endedAt: readNullableString(value.endedAt),
+    durationMinutes: readNullableNumber(value.durationMinutes),
+  };
+}
+
+function normalizeReference(value: unknown): ReferenceRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const projectId = readString(value.projectId);
+  const type = readString(value.type);
+
+  if (!id || !projectId) {
+    return null;
+  }
+
+  return {
+    id,
+    projectId,
+    title: readString(value.title, "Untitled reference"),
+    type:
+      type === "website" || type === "video" || type === "documentation" || type === "book"
+        ? type
+        : "paper",
+    source: readString(value.source),
+    summary: readString(value.summary),
+    tags: readStringArray(value.tags),
+    createdAt: readString(value.createdAt, new Date().toISOString()),
+  };
+}
+
+function normalizeFile(value: unknown): WorkspaceFile | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const projectId = readString(value.projectId);
+  const fileType = readString(value.fileType);
+
+  if (!id || !projectId) {
+    return null;
+  }
+
+  return {
+    id,
+    projectId,
+    name: readString(value.name, "Untitled file"),
+    fileType:
+      fileType === "png" || fileType === "jpg" || fileType === "csv" || fileType === "txt" || fileType === "markdown"
+        ? fileType
+        : "pdf",
+    sizeLabel: readString(value.sizeLabel),
+    path: readString(value.path),
+    tags: readStringArray(value.tags),
+    importedAt: readString(value.importedAt, new Date().toISOString()),
+  };
+}
+
+function normalizeTimelineEvent(value: unknown): TimelineEvent | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const projectId = readString(value.projectId);
+  const type = readString(value.type);
+
+  if (!id || !projectId) {
+    return null;
+  }
+
+  return {
+    id,
+    projectId,
+    type:
+      type === "note_created" ||
+      type === "task_completed" ||
+      type === "session_finished" ||
+      type === "file_imported" ||
+      type === "export_generated"
+        ? type
+        : "project_created",
+    title: readString(value.title, "Workspace event"),
+    description: readString(value.description),
+    createdAt: readString(value.createdAt, new Date().toISOString()),
+  };
 }
 
 function parseJsonArray(value: string): string[] {
