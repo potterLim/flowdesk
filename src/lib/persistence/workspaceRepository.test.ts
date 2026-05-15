@@ -80,6 +80,20 @@ class InMemorySchemaDatabase implements SqlDatabase {
   }
 }
 
+class UppercaseTableInfoDatabase extends InMemorySchemaDatabase {
+  async select<T>(query: string): Promise<T> {
+    const rows = await super.select<unknown[]>(query);
+
+    if (query === "PRAGMA table_info(files)") {
+      return rows.map((row) =>
+        typeof row === "object" && row !== null && "name" in row ? { Name: row.name } : row,
+      ) as T;
+    }
+
+    return rows as T;
+  }
+}
+
 describe("workspaceRepository schema migrations", () => {
   it("initializes the current SQLite schema with durable file storage fields", async () => {
     const database = new InMemorySchemaDatabase();
@@ -102,9 +116,31 @@ describe("workspaceRepository schema migrations", () => {
     await initializeWorkspaceSchema(database);
 
     expect(database.executedQueries).toContain("ALTER TABLE files ADD COLUMN source_path TEXT");
-    expect(database.executedQueries).toContain(
-      "ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked' CHECK (storage_mode IN ('managed', 'linked'))",
-    );
+    expect(database.executedQueries).toContain("ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'");
+    expect(database.executedQueries).toContain("PRAGMA user_version = 2");
+  });
+
+  it("recognizes SQLite table info rows returned with driver-specific casing", async () => {
+    const database = new UppercaseTableInfoDatabase({
+      userVersion: 1,
+      fileColumns: [
+        "id",
+        "project_id",
+        "name",
+        "file_type",
+        "size_label",
+        "path",
+        "source_path",
+        "storage_mode",
+        "tags_json",
+        "imported_at",
+      ],
+    });
+
+    await initializeWorkspaceSchema(database);
+
+    expect(database.executedQueries).not.toContain("ALTER TABLE files ADD COLUMN source_path TEXT");
+    expect(database.executedQueries).not.toContain("ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'");
     expect(database.executedQueries).toContain("PRAGMA user_version = 2");
   });
 

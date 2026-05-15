@@ -22,7 +22,33 @@ export function resolveThemeMode(themeMode: ThemeMode): "light" | "dark" {
 }
 
 export function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "The operation could not be completed.";
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const serializedError = JSON.stringify(error);
+
+    if (serializedError && serializedError !== "{}") {
+      return serializedError;
+    }
+  }
+
+  return "The operation could not be completed.";
 }
 
 export function formatExportFormat(format: ExportFormat): string {

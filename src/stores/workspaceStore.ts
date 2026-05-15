@@ -120,7 +120,33 @@ let persistenceQueue: Promise<void> = Promise.resolve();
 let persistenceRevision = 0;
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "FlowDesk could not save the workspace.";
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const serializedError = JSON.stringify(error);
+
+    if (serializedError && serializedError !== "{}") {
+      return serializedError;
+    }
+  }
+
+  return "FlowDesk could not save the workspace.";
 }
 
 function persistCurrentState(set: (partial: Partial<WorkspaceState>) => void, get: () => WorkspaceState): void {

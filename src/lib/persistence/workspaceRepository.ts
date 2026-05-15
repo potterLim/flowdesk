@@ -41,26 +41,10 @@ export async function resetWorkspaceRepositoryStorage(): Promise<void> {
     return;
   }
 
-  const { BaseDirectory, exists, mkdir, rename } = await import("@tauri-apps/plugin-fs");
-  const recoveryDirectory = "database-recovery";
-  const recoveryTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const { invoke } = await import("@tauri-apps/api/core");
+  const databaseUrl = await getWorkspaceDatabaseUrl();
 
-  await mkdir(recoveryDirectory, { baseDir: BaseDirectory.AppConfig, recursive: true });
-
-  await Promise.all(
-    ["flowdesk.db", "flowdesk.db-wal", "flowdesk.db-shm"].map(async (databaseFileName) => {
-      const fileExists = await exists(databaseFileName, { baseDir: BaseDirectory.AppConfig }).catch(() => false);
-
-      if (!fileExists) {
-        return;
-      }
-
-      await rename(databaseFileName, `${recoveryDirectory}/${recoveryTimestamp}-${databaseFileName}`, {
-        oldPathBaseDir: BaseDirectory.AppConfig,
-        newPathBaseDir: BaseDirectory.AppConfig,
-      });
-    }),
-  );
+  await invoke("reset_workspace_database", { databaseUrl });
 }
 
 async function createWorkspaceRepository(): Promise<WorkspaceRepository> {
@@ -96,8 +80,11 @@ function createBrowserWorkspaceRepository(): WorkspaceRepository {
 }
 
 async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
+  await ensureSqliteDirectory();
+
   const databaseModule = await import("@tauri-apps/plugin-sql");
-  const database = await databaseModule.default.load("sqlite:flowdesk.db");
+  const databaseUrl = await getWorkspaceDatabaseUrl();
+  const database = await databaseModule.default.load(databaseUrl);
 
   await initializeWorkspaceSchema(database);
 
@@ -131,142 +118,26 @@ async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
     },
 
     async saveWorkspace(snapshot) {
-      await database.execute("BEGIN TRANSACTION");
-
-      try {
-        await database.execute("DELETE FROM timeline_events");
-        await database.execute("DELETE FROM files");
-        await database.execute("DELETE FROM references_store");
-        await database.execute("DELETE FROM tasks");
-        await database.execute("DELETE FROM notes");
-        await database.execute("DELETE FROM work_sessions");
-        await database.execute("DELETE FROM projects");
-
-        for (const project of snapshot.projects) {
-          await database.execute(
-            `INSERT INTO projects
-              (id, title, description, created_at, updated_at, tags_json, status, is_pinned, accent, icon)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [
-              project.id,
-              project.title,
-              project.description,
-              project.createdAt,
-              project.updatedAt,
-              JSON.stringify(project.tags),
-              project.status,
-              project.isPinned ? 1 : 0,
-              project.accent,
-              project.icon,
-            ],
-          );
-        }
-
-        for (const session of snapshot.sessions) {
-          await database.execute(
-            `INSERT INTO work_sessions
-              (id, project_id, title, notes, started_at, ended_at, duration_minutes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [
-              session.id,
-              session.projectId,
-              session.title,
-              session.notes,
-              session.startedAt,
-              session.endedAt,
-              session.durationMinutes,
-            ],
-          );
-        }
-
-        for (const note of snapshot.notes) {
-          await database.execute(
-            `INSERT INTO notes
-              (id, project_id, title, folder, content, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [note.id, note.projectId, note.title, note.folder, note.content, note.createdAt, note.updatedAt],
-          );
-        }
-
-        for (const task of snapshot.tasks) {
-          await database.execute(
-            `INSERT INTO tasks
-              (id, project_id, title, status, priority, due_date, tags_json, linked_session_id, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [
-              task.id,
-              task.projectId,
-              task.title,
-              task.status,
-              task.priority,
-              task.dueDate,
-              JSON.stringify(task.tags),
-              task.linkedSessionId,
-              task.createdAt,
-              task.updatedAt,
-            ],
-          );
-        }
-
-        for (const reference of snapshot.references) {
-          await database.execute(
-            `INSERT INTO references_store
-              (id, project_id, title, type, source, summary, tags_json, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [
-              reference.id,
-              reference.projectId,
-              reference.title,
-              reference.type,
-              reference.source,
-              reference.summary,
-              JSON.stringify(reference.tags),
-              reference.createdAt,
-            ],
-          );
-        }
-
-        for (const file of snapshot.files) {
-          await database.execute(
-            `INSERT INTO files
-              (id, project_id, name, file_type, size_label, path, source_path, storage_mode, tags_json, imported_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [
-              file.id,
-              file.projectId,
-              file.name,
-              file.fileType,
-              file.sizeLabel,
-              file.path,
-              file.sourcePath,
-              file.storageMode,
-              JSON.stringify(file.tags),
-              file.importedAt,
-            ],
-          );
-        }
-
-        for (const event of snapshot.timelineEvents) {
-          await database.execute(
-            `INSERT INTO timeline_events
-              (id, project_id, type, title, description, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [event.id, event.projectId, event.type, event.title, event.description, event.createdAt],
-          );
-        }
-
-        await database.execute("COMMIT");
-      } catch (error) {
-        await database.execute("ROLLBACK");
-        throw error;
-      }
+      await executeWorkspaceSave(databaseUrl, database, buildWorkspaceSaveStatements(snapshot));
     },
   };
 }
 
+async function ensureSqliteDirectory(): Promise<void> {
+  const [{ appConfigDir }, { mkdir }] = await Promise.all([import("@tauri-apps/api/path"), import("@tauri-apps/plugin-fs")]);
+
+  await mkdir(await appConfigDir(), { recursive: true }).catch(() => undefined);
+}
+
+async function getWorkspaceDatabaseUrl(): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+
+  return invoke<string>("get_workspace_database_url");
+}
+
 export async function initializeWorkspaceSchema(database: SqlDatabase): Promise<void> {
   await database.execute("PRAGMA foreign_keys = ON");
-  await database.execute("PRAGMA journal_mode = WAL");
+  await database.select("PRAGMA journal_mode = WAL");
   await database.execute("PRAGMA synchronous = NORMAL");
   const versionRows = await database.select<SchemaVersionRow[]>("PRAGMA user_version");
   const currentVersion = versionRows[0]?.user_version ?? 0;
@@ -375,24 +246,193 @@ export async function initializeWorkspaceSchema(database: SqlDatabase): Promise<
       database,
       "files",
       "storage_mode",
-      "ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked' CHECK (storage_mode IN ('managed', 'linked'))",
+      "ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'",
     );
     await database.execute(`PRAGMA user_version = ${workspaceSchemaVersion}`);
     await database.execute("COMMIT");
   } catch (error) {
-    await database.execute("ROLLBACK");
+    await rollbackTransaction(database);
     throw error;
   }
+}
+
+async function executeWorkspaceSave(
+  databaseUrl: string,
+  database: SqlDatabase,
+  statements: SqliteStatement[],
+): Promise<void> {
+  if (isTauriRuntime()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+
+    await invoke("execute_workspace_transaction", { databaseUrl, statements });
+    return;
+  }
+
+  await database.execute("BEGIN TRANSACTION");
+
+  try {
+    for (const statement of statements) {
+      await database.execute(statement.query, statement.values);
+    }
+
+    await database.execute("COMMIT");
+  } catch (error) {
+    await rollbackTransaction(database);
+    throw error;
+  }
+}
+
+async function rollbackTransaction(database: SqlDatabase): Promise<void> {
+  await database.execute("ROLLBACK").catch(() => undefined);
+}
+
+function buildWorkspaceSaveStatements(snapshot: WorkspaceSnapshot): SqliteStatement[] {
+  const statements: SqliteStatement[] = [
+    { query: "DELETE FROM timeline_events" },
+    { query: "DELETE FROM files" },
+    { query: "DELETE FROM references_store" },
+    { query: "DELETE FROM tasks" },
+    { query: "DELETE FROM notes" },
+    { query: "DELETE FROM work_sessions" },
+    { query: "DELETE FROM projects" },
+  ];
+
+  for (const project of snapshot.projects) {
+    statements.push({
+      query: `INSERT INTO projects
+        (id, title, description, created_at, updated_at, tags_json, status, is_pinned, accent, icon)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      values: [
+        project.id,
+        project.title,
+        project.description,
+        project.createdAt,
+        project.updatedAt,
+        JSON.stringify(project.tags),
+        project.status,
+        project.isPinned ? 1 : 0,
+        project.accent,
+        project.icon,
+      ],
+    });
+  }
+
+  for (const session of snapshot.sessions) {
+    statements.push({
+      query: `INSERT INTO work_sessions
+        (id, project_id, title, notes, started_at, ended_at, duration_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      values: [
+        session.id,
+        session.projectId,
+        session.title,
+        session.notes,
+        session.startedAt,
+        session.endedAt,
+        session.durationMinutes,
+      ],
+    });
+  }
+
+  for (const note of snapshot.notes) {
+    statements.push({
+      query: `INSERT INTO notes
+        (id, project_id, title, folder, content, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      values: [note.id, note.projectId, note.title, note.folder, note.content, note.createdAt, note.updatedAt],
+    });
+  }
+
+  for (const task of snapshot.tasks) {
+    statements.push({
+      query: `INSERT INTO tasks
+        (id, project_id, title, status, priority, due_date, tags_json, linked_session_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      values: [
+        task.id,
+        task.projectId,
+        task.title,
+        task.status,
+        task.priority,
+        task.dueDate,
+        JSON.stringify(task.tags),
+        task.linkedSessionId,
+        task.createdAt,
+        task.updatedAt,
+      ],
+    });
+  }
+
+  for (const reference of snapshot.references) {
+    statements.push({
+      query: `INSERT INTO references_store
+        (id, project_id, title, type, source, summary, tags_json, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      values: [
+        reference.id,
+        reference.projectId,
+        reference.title,
+        reference.type,
+        reference.source,
+        reference.summary,
+        JSON.stringify(reference.tags),
+        reference.createdAt,
+      ],
+    });
+  }
+
+  for (const file of snapshot.files) {
+    statements.push({
+      query: `INSERT INTO files
+        (id, project_id, name, file_type, size_label, path, source_path, storage_mode, tags_json, imported_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      values: [
+        file.id,
+        file.projectId,
+        file.name,
+        file.fileType,
+        file.sizeLabel,
+        file.path,
+        file.sourcePath,
+        file.storageMode,
+        JSON.stringify(file.tags),
+        file.importedAt,
+      ],
+    });
+  }
+
+  for (const event of snapshot.timelineEvents) {
+    statements.push({
+      query: `INSERT INTO timeline_events
+        (id, project_id, type, title, description, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      values: [event.id, event.projectId, event.type, event.title, event.description, event.createdAt],
+    });
+  }
+
+  return statements;
 }
 
 async function ensureColumn(database: SqlDatabase, tableName: string, columnName: string, migrationSql: string): Promise<void> {
   const columns = await database.select<TableInfoRow[]>(`PRAGMA table_info(${tableName})`);
 
-  if (columns.some((column) => column.name === columnName)) {
+  if (columns.some((column) => readTableInfoColumnName(column) === columnName)) {
     return;
   }
 
   await database.execute(migrationSql);
+}
+
+function readTableInfoColumnName(row: TableInfoRow): string | null {
+  if (typeof row.name === "string") {
+    return row.name;
+  }
+
+  if (typeof row.Name === "string") {
+    return row.Name;
+  }
+
+  return null;
 }
 
 export function normalizeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | null {
@@ -761,12 +801,18 @@ export interface SqlDatabase {
   select: <T>(query: string, bindValues?: unknown[]) => Promise<T>;
 }
 
+interface SqliteStatement {
+  query: string;
+  values?: unknown[];
+}
+
 interface SchemaVersionRow {
   user_version: number;
 }
 
 interface TableInfoRow {
-  name: string;
+  name?: string;
+  Name?: string;
 }
 
 interface ProjectRow {
