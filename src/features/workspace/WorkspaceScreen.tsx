@@ -17,10 +17,12 @@ import {
   Play,
   Plus,
   Search,
+  Settings2,
   Square,
   Sun,
   Tags,
   Timer,
+  Trash2,
   X,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -31,7 +33,12 @@ import type { FormEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { Project, Task, TaskPriority, TaskStatus, TimelineEvent, WorkspaceView } from "../../domain/workspace";
 import { formatDateTime, formatDuration, formatShortDate, getElapsedMinutes } from "../../lib/date";
-import { useWorkspaceStore, type CreateProjectInput, type CreateTaskInput } from "../../stores/workspaceStore";
+import {
+  useWorkspaceStore,
+  type CreateProjectInput,
+  type CreateTaskInput,
+  type UpdateProjectInput,
+} from "../../stores/workspaceStore";
 
 const MarkdownEditor = lazy(() =>
   import("../../components/MarkdownEditor").then((module) => ({
@@ -95,6 +102,10 @@ function resolveThemeMode(themeMode: ThemeMode): "light" | "dark" {
 export function WorkspaceScreen() {
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isCreateTaskDialogOpen, setIsCreateTaskDialogOpen] = useState(false);
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
+  const [pendingProjectDeleteId, setPendingProjectDeleteId] = useState<string | null>(null);
+  const [pendingNoteDeleteId, setPendingNoteDeleteId] = useState<string | null>(null);
+  const [pendingTaskDeleteId, setPendingTaskDeleteId] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
   const projects = useWorkspaceStore((state) => state.projects);
   const notes = useWorkspaceStore((state) => state.notes);
@@ -113,11 +124,16 @@ export function WorkspaceScreen() {
   const createNote = useWorkspaceStore((state) => state.createNote);
   const createTask = useWorkspaceStore((state) => state.createTask);
   const createProject = useWorkspaceStore((state) => state.createProject);
+  const updateProject = useWorkspaceStore((state) => state.updateProject);
+  const deleteProject = useWorkspaceStore((state) => state.deleteProject);
   const toggleProjectPinned = useWorkspaceStore((state) => state.toggleProjectPinned);
   const archiveProject = useWorkspaceStore((state) => state.archiveProject);
   const restoreProject = useWorkspaceStore((state) => state.restoreProject);
+  const deleteNote = useWorkspaceStore((state) => state.deleteNote);
   const updateTaskStatus = useWorkspaceStore((state) => state.updateTaskStatus);
+  const deleteTask = useWorkspaceStore((state) => state.deleteTask);
   const startSession = useWorkspaceStore((state) => state.startSession);
+  const updateActiveSessionNotes = useWorkspaceStore((state) => state.updateActiveSessionNotes);
   const endActiveSession = useWorkspaceStore((state) => state.endActiveSession);
   const prepareMarkdownExport = useWorkspaceStore((state) => state.prepareMarkdownExport);
   const prepareJsonExport = useWorkspaceStore((state) => state.prepareJsonExport);
@@ -129,6 +145,7 @@ export function WorkspaceScreen() {
   const projectSessions = selectedProject ? sessions.filter((session) => session.projectId === selectedProject.id) : [];
   const projectTimelineEvents = selectedProject ? timelineEvents.filter((event) => event.projectId === selectedProject.id) : [];
   const activeSession = projectSessions.find((session) => session.endedAt === null);
+  const canEditProject = selectedProject?.status === "active";
   const openCreateProjectDialog = () => setIsCreateProjectDialogOpen(true);
   const closeCreateProjectDialog = () => setIsCreateProjectDialogOpen(false);
   const openCreateTaskDialog = () => setIsCreateTaskDialogOpen(true);
@@ -140,6 +157,43 @@ export function WorkspaceScreen() {
   const handleCreateTask = (input: CreateTaskInput) => {
     createTask(input);
     closeCreateTaskDialog();
+  };
+
+  const handleUpdateProject = (input: UpdateProjectInput) => {
+    if (!selectedProject) {
+      return;
+    }
+
+    updateProject(selectedProject.id, input);
+    setIsProjectSettingsOpen(false);
+  };
+
+  const handleConfirmProjectDelete = () => {
+    if (!pendingProjectDeleteId) {
+      return;
+    }
+
+    deleteProject(pendingProjectDeleteId);
+    setPendingProjectDeleteId(null);
+    setIsProjectSettingsOpen(false);
+  };
+
+  const handleConfirmNoteDelete = () => {
+    if (!pendingNoteDeleteId) {
+      return;
+    }
+
+    deleteNote(pendingNoteDeleteId);
+    setPendingNoteDeleteId(null);
+  };
+
+  const handleConfirmTaskDelete = () => {
+    if (!pendingTaskDeleteId) {
+      return;
+    }
+
+    deleteTask(pendingTaskDeleteId);
+    setPendingTaskDeleteId(null);
   };
 
   useEffect(() => {
@@ -183,6 +237,7 @@ export function WorkspaceScreen() {
             <WorkspaceHeader
               project={selectedProject}
               activeSessionLabel={activeSession ? formatDuration(getElapsedMinutes(activeSession.startedAt, null)) : null}
+              canEditProject={canEditProject}
               onCreateNote={createNote}
               onCreateTask={openCreateTaskDialog}
               onStartSession={startSession}
@@ -190,6 +245,7 @@ export function WorkspaceScreen() {
               onPrepareMarkdownExport={prepareMarkdownExport}
               onArchiveProject={() => archiveProject(selectedProject.id)}
               onRestoreProject={() => restoreProject(selectedProject.id)}
+              onOpenSettings={() => setIsProjectSettingsOpen(true)}
             />
             <ViewTabs activeView={activeView} onSelectView={setActiveView} />
             <section className="min-h-0 flex-1 overflow-visible px-3 pb-5 sm:px-5 lg:overflow-hidden">
@@ -201,11 +257,14 @@ export function WorkspaceScreen() {
                   sessions={projectSessions}
                   timelineEvents={projectTimelineEvents}
                   selectedNote={selectedNote}
+                  canEditProject={canEditProject}
                   onSelectNote={selectNote}
                   onCreateNote={createNote}
                   onCreateTask={openCreateTaskDialog}
                   onUpdateTaskStatus={updateTaskStatus}
+                  onDeleteTask={setPendingTaskDeleteId}
                   onStartSession={startSession}
+                  onUpdateActiveSessionNotes={updateActiveSessionNotes}
                   onEndSession={endActiveSession}
                 />
               )}
@@ -218,13 +277,27 @@ export function WorkspaceScreen() {
                   onUpdateTitle={updateSelectedNoteTitle}
                   onUpdateContent={updateSelectedNoteContent}
                   onCreateNote={createNote}
+                  onDeleteNote={setPendingNoteDeleteId}
+                  canEditProject={canEditProject}
                 />
               )}
               {activeView === "tasks" && (
-                <TasksView tasks={projectTasks} onCreateTask={openCreateTaskDialog} onUpdateTaskStatus={updateTaskStatus} />
+                <TasksView
+                  tasks={projectTasks}
+                  canEditProject={canEditProject}
+                  onCreateTask={openCreateTaskDialog}
+                  onUpdateTaskStatus={updateTaskStatus}
+                  onDeleteTask={setPendingTaskDeleteId}
+                />
               )}
               {activeView === "sessions" && (
-                <SessionsView sessions={projectSessions} onStartSession={startSession} onEndSession={endActiveSession} />
+                <SessionsView
+                  sessions={projectSessions}
+                  canEditProject={canEditProject}
+                  onStartSession={startSession}
+                  onUpdateActiveSessionNotes={updateActiveSessionNotes}
+                  onEndSession={endActiveSession}
+                />
               )}
               {activeView === "timeline" && <TimelineView timelineEvents={projectTimelineEvents} />}
               {activeView === "exports" && (
@@ -242,6 +315,39 @@ export function WorkspaceScreen() {
       </main>
       <CreateProjectDialog isOpen={isCreateProjectDialogOpen} onClose={closeCreateProjectDialog} onCreateProject={handleCreateProject} />
       <CreateTaskDialog isOpen={isCreateTaskDialogOpen} onClose={closeCreateTaskDialog} onCreateTask={handleCreateTask} />
+      {selectedProject && (
+        <ProjectSettingsDialog
+          project={selectedProject}
+          isOpen={isProjectSettingsOpen}
+          onClose={() => setIsProjectSettingsOpen(false)}
+          onUpdateProject={handleUpdateProject}
+          onRequestDelete={() => setPendingProjectDeleteId(selectedProject.id)}
+        />
+      )}
+      <ConfirmDialog
+        isOpen={pendingProjectDeleteId !== null}
+        title="Delete Project"
+        detail="This permanently removes the project and every attached note, task, session, timeline event, and local record from FlowDesk."
+        confirmLabel="Delete Project"
+        onCancel={() => setPendingProjectDeleteId(null)}
+        onConfirm={handleConfirmProjectDelete}
+      />
+      <ConfirmDialog
+        isOpen={pendingNoteDeleteId !== null}
+        title="Delete Note"
+        detail="This permanently removes the selected note from the project record."
+        confirmLabel="Delete Note"
+        onCancel={() => setPendingNoteDeleteId(null)}
+        onConfirm={handleConfirmNoteDelete}
+      />
+      <ConfirmDialog
+        isOpen={pendingTaskDeleteId !== null}
+        title="Delete Task"
+        detail="This permanently removes the task from the project record."
+        confirmLabel="Delete Task"
+        onCancel={() => setPendingTaskDeleteId(null)}
+        onConfirm={handleConfirmTaskDelete}
+      />
     </div>
   );
 }
@@ -685,6 +791,205 @@ function CreateTaskDialog({
   );
 }
 
+function ProjectSettingsDialog({
+  project,
+  isOpen,
+  onClose,
+  onUpdateProject,
+  onRequestDelete,
+}: {
+  project: Project;
+  isOpen: boolean;
+  onClose: () => void;
+  onUpdateProject: (input: UpdateProjectInput) => void;
+  onRequestDelete: () => void;
+}) {
+  const [title, setTitle] = useState(project.title);
+  const [description, setDescription] = useState(project.description);
+  const [tags, setTags] = useState(project.tags.join(", "));
+  const [accent, setAccent] = useState<Project["accent"]>(project.accent);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    setTitle(project.title);
+    setDescription(project.description);
+    setTags(project.tags.join(", "));
+    setAccent(project.accent);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose, project]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const canSaveProject = title.trim().length > 0;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!canSaveProject) {
+      return;
+    }
+
+    onUpdateProject({
+      title,
+      description,
+      tags: parseTags(tags),
+      accent,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="project-settings-title"
+        className="w-full max-w-[600px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
+      >
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
+          <div>
+            <h2 id="project-settings-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
+              Project Settings
+            </h2>
+            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">{project.status === "archived" ? "Archived project" : "Active project"}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close project settings dialog"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-5">
+          <ProjectTextField label="Project name" value={title} onChange={setTitle} placeholder="Name this project" autoFocus />
+          <ProjectTextArea label="Summary" value={description} onChange={setDescription} placeholder="Optional" />
+          <ProjectTextField label="Tags" value={tags} onChange={setTags} placeholder="Optional, comma-separated" />
+          <ProjectAccentPicker value={accent} onChange={setAccent} />
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={onRequestDelete}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
+          >
+            <Trash2 size={14} />
+            Delete Project
+          </button>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSaveProject}
+              className="h-9 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white transition hover:bg-[var(--color-accent-strong)] disabled:bg-slate-300"
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  isOpen,
+  title,
+  detail,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  title: string;
+  detail: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onCancel]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm" onMouseDown={onCancel}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        className="w-full max-w-[460px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.24)]"
+      >
+        <div className="px-5 pt-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-700">
+            <Trash2 size={18} />
+          </div>
+          <h2 id="confirm-dialog-title" className="mt-4 text-[17px] font-semibold text-[var(--color-ink)]">
+            {title}
+          </h2>
+          <p className="mt-2 text-[13px] leading-6 text-[var(--color-muted)]">{detail}</p>
+        </div>
+        <div className="mt-5 flex items-center justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-9 rounded-md bg-red-600 px-3 text-[13px] font-semibold whitespace-nowrap text-white transition hover:bg-red-700"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ProjectSidebarProps {
   projects: Project[];
   selectedProjectId: string;
@@ -858,7 +1163,7 @@ function ProjectRow({
     <div
       className={clsx(
         "group flex w-full items-center gap-1 rounded-md px-2 py-2 transition",
-        isSelected ? "bg-[var(--color-selection)] text-[var(--color-ink)]" : "text-slate-700 hover:bg-slate-50",
+        isSelected ? "bg-blue-50 text-[var(--color-ink)]" : "text-slate-700 hover:bg-slate-50",
       )}
     >
       <button
@@ -924,6 +1229,7 @@ function ProjectRow({
 function WorkspaceHeader({
   project,
   activeSessionLabel,
+  canEditProject,
   onCreateNote,
   onCreateTask,
   onStartSession,
@@ -931,9 +1237,11 @@ function WorkspaceHeader({
   onPrepareMarkdownExport,
   onArchiveProject,
   onRestoreProject,
+  onOpenSettings,
 }: {
   project: Project;
   activeSessionLabel: string | null;
+  canEditProject: boolean;
   onCreateNote: () => void;
   onCreateTask: () => void;
   onStartSession: () => void;
@@ -941,6 +1249,7 @@ function WorkspaceHeader({
   onPrepareMarkdownExport: () => void;
   onArchiveProject: () => void;
   onRestoreProject: () => void;
+  onOpenSettings: () => void;
 }) {
   return (
     <header className="border-b border-[var(--color-border)] bg-white px-5 py-4">
@@ -963,7 +1272,7 @@ function WorkspaceHeader({
             {project.tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-app-bg)] px-2 text-[12px] font-medium text-slate-700"
+                className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--color-border)] bg-slate-50 px-2 text-[12px] font-medium text-slate-700"
               >
                 <Tags size={12} />
                 {tag}
@@ -973,34 +1282,41 @@ function WorkspaceHeader({
           </div>
         </div>
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 xl:w-auto xl:shrink-0">
-          {activeSessionLabel ? (
-            <button
-              type="button"
-              onClick={onEndSession}
-              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
-            >
-              <Square size={14} />
-              <span>End Session</span>
-              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] leading-none text-red-700">{activeSessionLabel}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onStartSession}
-              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-[var(--color-accent)] bg-[var(--color-selection)] px-3 text-[13px] font-semibold whitespace-nowrap text-[var(--color-accent)] transition hover:bg-[var(--color-app-bg)]"
-            >
-              <Play size={14} />
-              Start Session
-            </button>
+          {canEditProject && (
+            activeSessionLabel ? (
+              <button
+                type="button"
+                aria-label="End Session"
+                title="End Session"
+                onClick={onEndSession}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-0 rounded-md border border-red-200 bg-red-50 px-2 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100 sm:gap-2 sm:px-3"
+              >
+                <Square size={14} />
+                <span className="hidden sm:inline">End Session</span>
+                <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[11px] leading-none text-red-700 sm:ml-0">{activeSessionLabel}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="Start Session"
+                title="Start Session"
+                onClick={onStartSession}
+                className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-accent)] bg-blue-50 px-0 text-[13px] font-semibold whitespace-nowrap text-[var(--color-accent)] transition hover:bg-slate-50 sm:w-auto sm:gap-2 sm:px-3"
+              >
+                <Play size={14} />
+                <span className="hidden sm:inline">Start Session</span>
+              </button>
+            )
           )}
-          <ActionButton icon={NotebookText} label="New Note" onClick={onCreateNote} />
-          <ActionButton icon={ListChecks} label="New Task" onClick={onCreateTask} />
+          {canEditProject && <ActionButton icon={NotebookText} label="New Note" onClick={onCreateNote} />}
+          {canEditProject && <ActionButton icon={ListChecks} label="New Task" onClick={onCreateTask} />}
           <ActionButton icon={Download} label="Export" onClick={onPrepareMarkdownExport} />
           {project.status === "active" ? (
             <ActionButton icon={Archive} label="Archive" onClick={onArchiveProject} />
           ) : (
             <ActionButton icon={ArchiveRestore} label="Restore" onClick={onRestoreProject} />
           )}
+          <IconButton label="Project settings" icon={Settings2} size="md" onClick={onOpenSettings} />
         </div>
       </div>
     </header>
@@ -1017,16 +1333,18 @@ function ViewTabs({ activeView, onSelectView }: { activeView: WorkspaceView; onS
           <button
             key={item.id}
             type="button"
+            aria-label={item.label}
+            title={item.label}
             onClick={() => onSelectView(item.id)}
             className={clsx(
-              "inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] font-semibold whitespace-nowrap transition",
+              "inline-flex h-8 w-10 shrink-0 items-center justify-center gap-0 rounded-md px-0 text-[13px] font-semibold whitespace-nowrap transition sm:w-auto sm:gap-2 sm:px-3",
               activeView === item.id
                 ? "bg-[var(--color-accent)] text-white"
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
             )}
           >
             <Icon size={14} />
-            {item.label}
+            <span className="hidden sm:inline">{item.label}</span>
           </button>
         );
       })}
@@ -1041,11 +1359,14 @@ function OverviewView({
   sessions,
   timelineEvents,
   selectedNote,
+  canEditProject,
   onSelectNote,
   onCreateNote,
   onCreateTask,
   onUpdateTaskStatus,
+  onDeleteTask,
   onStartSession,
+  onUpdateActiveSessionNotes,
   onEndSession,
 }: {
   project: Project;
@@ -1054,11 +1375,14 @@ function OverviewView({
   sessions: ReturnType<typeof useWorkspaceStore.getState>["sessions"];
   timelineEvents: TimelineEvent[];
   selectedNote: ReturnType<typeof useWorkspaceStore.getState>["notes"][number] | undefined;
+  canEditProject: boolean;
   onSelectNote: (noteId: string) => void;
   onCreateNote: () => void;
   onCreateTask: () => void;
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
+  onDeleteTask: (taskId: string) => void;
   onStartSession: () => void;
+  onUpdateActiveSessionNotes: (notes: string) => void;
   onEndSession: () => void;
 }) {
   const completedTaskCount = tasks.filter((task) => task.status === "done").length;
@@ -1109,9 +1433,9 @@ function OverviewView({
             ) : (
               <EmptyState
                 title="No note selected"
-                detail="Create a note to start building the project record."
-                actionLabel="New Note"
-                onAction={onCreateNote}
+                detail={canEditProject ? "Create a note to start building the project record." : "Restore the project before adding new records."}
+                actionLabel={canEditProject ? "New Note" : undefined}
+                onAction={canEditProject ? onCreateNote : undefined}
               />
             )}
           </div>
@@ -1119,8 +1443,21 @@ function OverviewView({
       </div>
 
       <div className="min-h-0 space-y-5 overflow-visible xl:overflow-y-auto">
-        <SessionCard activeSession={activeSession} sessions={sessions} onStartSession={onStartSession} onEndSession={onEndSession} />
-        <TaskStack tasks={tasks.slice(0, 4)} onCreateTask={onCreateTask} onUpdateTaskStatus={onUpdateTaskStatus} />
+        <SessionCard
+          activeSession={activeSession}
+          sessions={sessions}
+          canEditProject={canEditProject}
+          onStartSession={onStartSession}
+          onUpdateActiveSessionNotes={onUpdateActiveSessionNotes}
+          onEndSession={onEndSession}
+        />
+        <TaskStack
+          tasks={tasks.slice(0, 4)}
+          canEditProject={canEditProject}
+          onCreateTask={onCreateTask}
+          onUpdateTaskStatus={onUpdateTaskStatus}
+          onDeleteTask={onDeleteTask}
+        />
         <TimelineStack timelineEvents={timelineEvents.slice(0, 4)} />
       </div>
     </div>
@@ -1135,6 +1472,8 @@ function NotesView({
   onUpdateTitle,
   onUpdateContent,
   onCreateNote,
+  onDeleteNote,
+  canEditProject,
 }: {
   notes: ReturnType<typeof useWorkspaceStore.getState>["notes"];
   selectedNoteId: string;
@@ -1143,6 +1482,8 @@ function NotesView({
   onUpdateTitle: (title: string) => void;
   onUpdateContent: (content: string) => void;
   onCreateNote: () => void;
+  onDeleteNote: (noteId: string) => void;
+  canEditProject: boolean;
 }) {
   const selectedNote = notes.find((note) => note.id === selectedNoteId);
 
@@ -1155,14 +1496,16 @@ function NotesView({
             <div className="rounded-md border border-dashed border-[var(--color-border)] bg-white px-3 py-4 text-center">
               <p className="text-[13px] font-semibold text-slate-900">No notes yet</p>
               <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">Create the first durable record for this project.</p>
-              <button
-                type="button"
-                onClick={onCreateNote}
-                className="mt-3 inline-flex h-8 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[12px] font-semibold whitespace-nowrap text-white"
-              >
-                <Plus size={13} />
-                New Note
-              </button>
+              {canEditProject && (
+                <button
+                  type="button"
+                  onClick={onCreateNote}
+                  className="mt-3 inline-flex h-8 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[12px] font-semibold whitespace-nowrap text-white"
+                >
+                  <Plus size={13} />
+                  New Note
+                </button>
+              )}
             </div>
           ) : (
             notes.map((note) => (
@@ -1192,17 +1535,35 @@ function NotesView({
               <input
                 value={selectedNote.title}
                 onChange={(event) => onUpdateTitle(event.target.value)}
-                className="h-6 w-full min-w-0 rounded-sm bg-transparent text-[13px] font-semibold text-slate-950 outline-none focus:bg-[var(--color-surface-subtle)]"
+                readOnly={!canEditProject}
+                className="h-6 w-full min-w-0 rounded-sm bg-transparent text-[13px] font-semibold text-slate-950 outline-none focus:bg-[var(--color-surface-subtle)] read-only:cursor-default"
                 aria-label="Note title"
               />
             ) : (
-              <p className="truncate text-[13px] font-semibold text-slate-950">Untitled</p>
+              <p className="truncate text-[13px] font-semibold text-slate-950">No note selected</p>
             )}
-            <p className="text-[12px] text-[var(--color-muted)]">Markdown editor</p>
+            <p className="text-[12px] text-[var(--color-muted)]">
+              {selectedNote ? (canEditProject ? "Markdown editor" : "Archived note") : "Choose or create a note"}
+            </p>
           </div>
-          <span className="rounded-md bg-slate-100 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-slate-600">Saved locally</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-slate-600">
+              {selectedNote ? (canEditProject ? "Saved locally" : "Read only") : "Ready"}
+            </span>
+            {selectedNote && canEditProject && (
+              <button
+                type="button"
+                onClick={() => onDeleteNote(selectedNote.id)}
+                aria-label="Delete note"
+                title="Delete note"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-border)] text-slate-500 transition hover:bg-red-50 hover:text-red-700"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
         </div>
-        {selectedNote ? (
+        {selectedNote && canEditProject ? (
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-[13px] font-medium text-[var(--color-muted)]">
@@ -1212,8 +1573,15 @@ function NotesView({
           >
             <MarkdownEditor value={selectedNoteContent} onChange={onUpdateContent} />
           </Suspense>
+        ) : selectedNote ? (
+          <div className="min-h-0 overflow-y-auto p-5">
+            <MarkdownReadingSurface content={selectedNoteContent} />
+          </div>
         ) : (
-          <EmptyState title="No note selected" detail="Create a note to open the Markdown editor." />
+          <EmptyState
+            title="No note selected"
+            detail={canEditProject ? "Create a note to open the Markdown editor." : "Restore the project before adding new notes."}
+          />
         )}
       </section>
 
@@ -1238,12 +1606,16 @@ function NotesView({
 
 function TasksView({
   tasks,
+  canEditProject,
   onCreateTask,
   onUpdateTaskStatus,
+  onDeleteTask,
 }: {
   tasks: Task[];
+  canEditProject: boolean;
   onCreateTask: () => void;
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
+  onDeleteTask: (taskId: string) => void;
 }) {
   const groupedStatuses: TaskStatus[] = ["todo", "in_progress", "done", "archived"];
 
@@ -1256,14 +1628,28 @@ function TasksView({
             {tasks.filter((task) => task.status === status).length === 0 ? (
               <EmptyState
                 title={status === "todo" ? "No tasks yet" : "Empty"}
-                detail={status === "todo" ? "Add a task when the next step is clear." : "Tasks appear here as their state changes."}
-                actionLabel={status === "todo" ? "New Task" : undefined}
-                onAction={status === "todo" ? onCreateTask : undefined}
+                detail={
+                  status === "todo"
+                    ? canEditProject
+                      ? "Add a task when the next step is clear."
+                      : "Restore the project before adding tasks."
+                    : "Tasks appear here as their state changes."
+                }
+                actionLabel={status === "todo" && canEditProject ? "New Task" : undefined}
+                onAction={status === "todo" && canEditProject ? onCreateTask : undefined}
               />
             ) : (
               tasks
                 .filter((task) => task.status === status)
-                .map((task) => <TaskCard key={task.id} task={task} onUpdateTaskStatus={onUpdateTaskStatus} />)
+                .map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    canEditProject={canEditProject}
+                    onUpdateTaskStatus={onUpdateTaskStatus}
+                    onDeleteTask={onDeleteTask}
+                  />
+                ))
             )}
           </div>
         </section>
@@ -1274,23 +1660,39 @@ function TasksView({
 
 function SessionsView({
   sessions,
+  canEditProject,
   onStartSession,
+  onUpdateActiveSessionNotes,
   onEndSession,
 }: {
   sessions: ReturnType<typeof useWorkspaceStore.getState>["sessions"];
+  canEditProject: boolean;
   onStartSession: () => void;
+  onUpdateActiveSessionNotes: (notes: string) => void;
   onEndSession: () => void;
 }) {
   const activeSession = sessions.find((session) => session.endedAt === null);
 
   return (
     <div className="grid h-auto min-h-0 grid-cols-1 gap-5 pt-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:h-full">
-      <SessionCard activeSession={activeSession} sessions={sessions} onStartSession={onStartSession} onEndSession={onEndSession} />
+      <SessionCard
+        activeSession={activeSession}
+        sessions={sessions}
+        canEditProject={canEditProject}
+        onStartSession={onStartSession}
+        onUpdateActiveSessionNotes={onUpdateActiveSessionNotes}
+        onEndSession={onEndSession}
+      />
       <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
         <PanelHeader title="Session History" detail="Actual work blocks over time" />
         <div className="min-h-0 divide-y divide-[var(--color-border)] overflow-y-auto">
           {sessions.length === 0 ? (
-            <EmptyState title="No sessions yet" detail="Start a focus session when work begins." actionLabel="Start Session" onAction={onStartSession} />
+            <EmptyState
+              title="No sessions yet"
+              detail={canEditProject ? "Start a focus session when work begins." : "Restore the project before tracking sessions."}
+              actionLabel={canEditProject ? "Start Session" : undefined}
+              onAction={canEditProject ? onStartSession : undefined}
+            />
           ) : (
             sessions.map((session) => (
               <div key={session.id} className="px-5 py-4">
@@ -1360,7 +1762,7 @@ function ExportsView({
             className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700"
           >
             <Database size={15} />
-            Generate JSON Backup
+            Generate Project JSON
           </button>
         </div>
       </section>
@@ -1390,12 +1792,16 @@ function MetricPanel({ label, value, detail, icon: Icon }: { label: string; valu
 function SessionCard({
   activeSession,
   sessions,
+  canEditProject,
   onStartSession,
+  onUpdateActiveSessionNotes,
   onEndSession,
 }: {
   activeSession: ReturnType<typeof useWorkspaceStore.getState>["sessions"][number] | undefined;
   sessions: ReturnType<typeof useWorkspaceStore.getState>["sessions"];
+  canEditProject: boolean;
   onStartSession: () => void;
+  onUpdateActiveSessionNotes: (notes: string) => void;
   onEndSession: () => void;
 }) {
   return (
@@ -1413,7 +1819,15 @@ function SessionCard({
           <p className="mt-2 text-[26px] font-semibold text-[var(--color-accent)]">
             {formatDuration(getElapsedMinutes(activeSession.startedAt, null))}
           </p>
-          {activeSession.notes && <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">{activeSession.notes}</p>}
+          <label className="mt-3 block">
+            <span className="text-[12px] font-semibold text-[var(--color-ink)]">Session notes</span>
+            <textarea
+              value={activeSession.notes}
+              onChange={(event) => onUpdateActiveSessionNotes(event.target.value)}
+              placeholder="What changed during this block?"
+              className="mt-1 min-h-[82px] w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[13px] leading-5 text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
+            />
+          </label>
           <button
             type="button"
             onClick={onEndSession}
@@ -1423,7 +1837,7 @@ function SessionCard({
             End Session
           </button>
         </div>
-      ) : (
+      ) : canEditProject ? (
         <button
           type="button"
           onClick={onStartSession}
@@ -1432,6 +1846,10 @@ function SessionCard({
           <Play size={14} />
           Start Focus Session
         </button>
+      ) : (
+        <div className="mt-4 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 py-4 text-center text-[12px] leading-5 text-[var(--color-muted)]">
+          Restore this project before tracking new sessions.
+        </div>
       )}
       <p className="mt-3 text-[12px] text-[var(--color-muted)]">{sessions.length} sessions recorded</p>
     </section>
@@ -1440,63 +1858,115 @@ function SessionCard({
 
 function TaskStack({
   tasks,
+  canEditProject,
   onCreateTask,
   onUpdateTaskStatus,
+  onDeleteTask,
 }: {
   tasks: Task[];
+  canEditProject: boolean;
   onCreateTask: () => void;
   onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
+  onDeleteTask: (taskId: string) => void;
 }) {
   return (
     <section className="rounded-lg border border-[var(--color-border)] bg-white shadow-[var(--shadow-soft)]">
       <PanelHeader title="Task Stack" detail="Next commitments" />
       <div className="space-y-3 p-3">
         {tasks.length === 0 ? (
-          <button
-            type="button"
-            onClick={onCreateTask}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 py-4 text-center text-[12px] font-semibold whitespace-nowrap text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
-          >
-            <Plus size={13} />
-            New Task
-          </button>
+          canEditProject ? (
+            <button
+              type="button"
+              onClick={onCreateTask}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-slate-50 px-3 py-4 text-center text-[12px] font-semibold whitespace-nowrap text-[var(--color-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              <Plus size={13} />
+              New Task
+            </button>
+          ) : (
+            <p className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 py-4 text-center text-[12px] leading-5 text-[var(--color-muted)]">
+              Restore this project before adding tasks.
+            </p>
+          )
         ) : (
-          tasks.map((task) => <TaskCard key={task.id} task={task} onUpdateTaskStatus={onUpdateTaskStatus} />)
+          tasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              canEditProject={canEditProject}
+              onUpdateTaskStatus={onUpdateTaskStatus}
+              onDeleteTask={onDeleteTask}
+            />
+          ))
         )}
       </div>
     </section>
   );
 }
 
-function TaskCard({ task, onUpdateTaskStatus }: { task: Task; onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void }) {
+function TaskCard({
+  task,
+  canEditProject,
+  onUpdateTaskStatus,
+  onDeleteTask,
+}: {
+  task: Task;
+  canEditProject: boolean;
+  onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
+  onDeleteTask: (taskId: string) => void;
+}) {
   return (
     <article className="rounded-md border border-[var(--color-border)] bg-white p-3">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[13px] font-semibold leading-5 text-slate-950">{task.title}</p>
-        <span className={clsx("rounded-md border px-2 py-1 text-[11px] font-semibold whitespace-nowrap capitalize", priorityClasses[task.priority])}>
-          {task.priority}
-        </span>
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-[13px] font-semibold leading-5 text-slate-950">{task.title}</p>
+        {canEditProject && (
+          <button
+            type="button"
+            onClick={() => onDeleteTask(task.id)}
+            aria-label={`Delete ${task.title}`}
+            title="Delete task"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-700"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
       <div className="mt-3 space-y-3">
-        <span className="block text-[12px] text-[var(--color-muted)]">
-          {task.dueDate ? `Due ${formatShortDate(task.dueDate)}` : "No due date"}
-        </span>
-        <div className="grid grid-cols-3 gap-1">
-          {(["todo", "in_progress", "done"] as TaskStatus[]).map((status) => (
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[12px] text-[var(--color-muted)]">
+            {task.dueDate ? `Due ${formatShortDate(task.dueDate)}` : "No due date"}
+          </span>
+          <span
+            className={clsx(
+              "shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold whitespace-nowrap capitalize",
+              priorityClasses[task.priority],
+            )}
+          >
+            {task.priority}
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-1">
+          {(["todo", "in_progress", "done", "archived"] as TaskStatus[]).map((status) => (
             <button
               key={status}
               type="button"
               aria-label={`Set task to ${taskStatusLabels[status]}`}
               title={taskStatusLabels[status]}
               onClick={() => onUpdateTaskStatus(task.id, status)}
+              disabled={!canEditProject}
               className={clsx(
                 "flex h-8 min-w-0 items-center justify-center rounded-md px-1.5 text-center text-[11px] font-semibold leading-none transition",
-                task.status === status ? "bg-[var(--color-accent)] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                task.status === status
+                  ? "bg-[var(--color-accent)] text-white"
+                  : canEditProject
+                    ? "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : "bg-slate-100 text-slate-400 opacity-70",
               )}
             >
               {status === "done" && <Check size={13} />}
               {status === "in_progress" && <Timer size={13} />}
               {status === "todo" && <Circle size={13} />}
+              {status === "archived" && <Archive size={13} />}
             </button>
           ))}
         </div>
@@ -1562,11 +2032,13 @@ function ActionButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label:
   return (
     <button
       type="button"
+      aria-label={label}
+      title={label}
       onClick={onClick}
-      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
+      className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-border)] bg-white px-0 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 sm:w-auto sm:gap-2 sm:px-3"
     >
       <Icon size={14} />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }
@@ -1575,11 +2047,13 @@ function IconButton({
   icon: Icon,
   label,
   isActive,
+  size = "sm",
   onClick,
 }: {
   icon: LucideIcon;
   label: string;
   isActive?: boolean;
+  size?: "sm" | "md";
   onClick?: () => void;
 }) {
   return (
@@ -1589,9 +2063,10 @@ function IconButton({
       title={label}
       onClick={onClick}
       className={clsx(
-        "flex h-8 w-8 items-center justify-center rounded-md border transition",
+        "flex items-center justify-center rounded-md border transition",
+        size === "md" ? "h-9 w-9 shrink-0" : "h-8 w-8",
         isActive
-          ? "border-[var(--color-accent)] bg-[var(--color-selection)] text-[var(--color-accent)]"
+          ? "border-[var(--color-accent)] bg-blue-50 text-[var(--color-accent)]"
           : "border-[var(--color-border)] bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950",
       )}
     >

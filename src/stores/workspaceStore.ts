@@ -19,6 +19,8 @@ export interface CreateProjectInput {
   accent: Project["accent"];
 }
 
+export interface UpdateProjectInput extends CreateProjectInput {}
+
 export interface CreateTaskInput {
   title: string;
   priority: Task["priority"];
@@ -34,6 +36,8 @@ interface WorkspaceState extends WorkspaceSnapshot {
   persistenceMode: WorkspacePersistenceMode;
   hydrateWorkspace: () => void;
   createProject: (input: CreateProjectInput) => void;
+  updateProject: (projectId: string, input: UpdateProjectInput) => void;
+  deleteProject: (projectId: string) => void;
   toggleProjectPinned: (projectId: string) => void;
   archiveProject: (projectId: string) => void;
   restoreProject: (projectId: string) => void;
@@ -43,9 +47,12 @@ interface WorkspaceState extends WorkspaceSnapshot {
   updateSelectedNoteTitle: (title: string) => void;
   updateSelectedNoteContent: (content: string) => void;
   createNote: () => void;
+  deleteNote: (noteId: string) => void;
   createTask: (input: CreateTaskInput) => void;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
+  deleteTask: (taskId: string) => void;
   startSession: () => void;
+  updateActiveSessionNotes: (notes: string) => void;
   endActiveSession: () => void;
   prepareMarkdownExport: () => void;
   prepareJsonExport: () => void;
@@ -103,6 +110,21 @@ function updateProjectTimestamp(projects: Project[], projectId: string, updatedA
         }
       : project,
   );
+}
+
+function getProjectIcon(title: string): string {
+  return title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join("")
+    .padEnd(2, "P")
+    .slice(0, 2);
+}
+
+function isProjectEditable(state: WorkspaceState, projectId: string): boolean {
+  return state.projects.some((project) => project.id === projectId && project.status === "active");
 }
 
 function createTimelineEvent(projectId: string, title: string, description: string, type: TimelineEvent["type"]): TimelineEvent {
@@ -197,14 +219,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const normalizedTitle = input.title.trim();
     const title = normalizedTitle.length > 0 ? normalizedTitle : "Untitled Project";
     const description = input.description.trim();
-    const icon = title
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((word) => word[0]?.toUpperCase())
-      .join("")
-      .padEnd(2, "P")
-      .slice(0, 2);
     const newProject: Project = {
       id: createId("project"),
       title,
@@ -215,7 +229,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       status: "active",
       isPinned: false,
       accent: input.accent,
-      icon,
+      icon: getProjectIcon(title),
     };
 
     set({
@@ -226,6 +240,58 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ],
       selectedProjectId: newProject.id,
       selectedNoteId: "",
+      activeView: "overview",
+      exportPreview: "",
+    });
+    persistCurrentState(get);
+  },
+
+  updateProject(projectId, input) {
+    const state = get();
+    const now = new Date().toISOString();
+    const normalizedTitle = input.title.trim();
+    const title = normalizedTitle.length > 0 ? normalizedTitle : "Untitled Project";
+
+    set({
+      projects: state.projects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              title,
+              description: input.description.trim(),
+              tags: input.tags,
+              accent: input.accent,
+              icon: getProjectIcon(title),
+              updatedAt: now,
+            }
+          : project,
+      ),
+      exportPreview: "",
+    });
+    persistCurrentState(get);
+  },
+
+  deleteProject(projectId) {
+    const state = get();
+    const nextProjects = state.projects.filter((project) => project.id !== projectId);
+    const nextSelectedProject =
+      state.selectedProjectId === projectId
+        ? nextProjects.find((project) => project.status === "active") ?? nextProjects[0]
+        : nextProjects.find((project) => project.id === state.selectedProjectId) ?? nextProjects[0];
+    const nextSelectedNote = nextSelectedProject
+      ? state.notes.find((note) => note.projectId === nextSelectedProject.id)
+      : undefined;
+
+    set({
+      projects: nextProjects,
+      notes: state.notes.filter((note) => note.projectId !== projectId),
+      tasks: state.tasks.filter((task) => task.projectId !== projectId),
+      sessions: state.sessions.filter((session) => session.projectId !== projectId),
+      references: state.references.filter((reference) => reference.projectId !== projectId),
+      files: state.files.filter((file) => file.projectId !== projectId),
+      timelineEvents: state.timelineEvents.filter((event) => event.projectId !== projectId),
+      selectedProjectId: nextSelectedProject?.id ?? "",
+      selectedNoteId: nextSelectedNote?.id ?? "",
       activeView: "overview",
       exportPreview: "",
     });
@@ -333,6 +399,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
+    if (!isProjectEditable(state, selectedNote.projectId)) {
+      return;
+    }
+
     set({
       notes: state.notes.map((note) =>
         note.id === selectedNote.id
@@ -357,6 +427,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
+    if (!isProjectEditable(state, selectedNote.projectId)) {
+      return;
+    }
+
     set({
       notes: state.notes.map((note) =>
         note.id === selectedNote.id
@@ -376,6 +450,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const state = get();
 
     if (!state.selectedProjectId) {
+      return;
+    }
+
+    if (!isProjectEditable(state, state.selectedProjectId)) {
       return;
     }
 
@@ -403,10 +481,37 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistCurrentState(get);
   },
 
+  deleteNote(noteId) {
+    const state = get();
+    const note = state.notes.find((candidateNote) => candidateNote.id === noteId);
+
+    if (!note || !isProjectEditable(state, note.projectId)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const projectNotes = state.notes.filter((candidateNote) => candidateNote.projectId === note.projectId && candidateNote.id !== noteId);
+    const nextSelectedNote =
+      state.selectedNoteId === noteId ? projectNotes[0] : state.notes.find((candidateNote) => candidateNote.id === state.selectedNoteId);
+
+    set({
+      notes: state.notes.filter((candidateNote) => candidateNote.id !== noteId),
+      selectedNoteId: nextSelectedNote?.id ?? "",
+      activeView: projectNotes.length > 0 ? "notes" : "overview",
+      projects: updateProjectTimestamp(state.projects, note.projectId, now),
+      exportPreview: "",
+    });
+    persistCurrentState(get);
+  },
+
   createTask(input) {
     const state = get();
 
     if (!state.selectedProjectId) {
+      return;
+    }
+
+    if (!isProjectEditable(state, state.selectedProjectId)) {
       return;
     }
 
@@ -442,6 +547,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
+    if (!isProjectEditable(state, task.projectId)) {
+      return;
+    }
+
     const timelineEvents =
       status === "done" && task.status !== "done"
         ? [
@@ -466,10 +575,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistCurrentState(get);
   },
 
+  deleteTask(taskId) {
+    const state = get();
+    const task = state.tasks.find((candidateTask) => candidateTask.id === taskId);
+
+    if (!task || !isProjectEditable(state, task.projectId)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    set({
+      tasks: state.tasks.filter((candidateTask) => candidateTask.id !== taskId),
+      projects: updateProjectTimestamp(state.projects, task.projectId, now),
+      exportPreview: "",
+    });
+    persistCurrentState(get);
+  },
+
   startSession() {
     const state = get();
 
     if (!state.selectedProjectId) {
+      return;
+    }
+
+    if (!isProjectEditable(state, state.selectedProjectId)) {
       return;
     }
 
@@ -500,6 +631,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistCurrentState(get);
   },
 
+  updateActiveSessionNotes(notes) {
+    const state = get();
+    const activeSession = state.sessions.find(
+      (session) => session.projectId === state.selectedProjectId && session.endedAt === null,
+    );
+
+    if (!activeSession || !isProjectEditable(state, activeSession.projectId)) {
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+
+    set({
+      sessions: state.sessions.map((session) =>
+        session.id === activeSession.id
+          ? {
+              ...session,
+              notes,
+            }
+          : session,
+      ),
+      projects: updateProjectTimestamp(state.projects, activeSession.projectId, updatedAt),
+    });
+    persistCurrentState(get);
+  },
+
   endActiveSession() {
     const state = get();
     const activeSession = state.sessions.find(
@@ -507,6 +664,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     );
 
     if (!activeSession) {
+      return;
+    }
+
+    if (!isProjectEditable(state, activeSession.projectId)) {
       return;
     }
 
@@ -575,7 +736,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       exportPreview: JSON.stringify(projectSnapshot, null, 2),
       activeView: "exports",
       timelineEvents: [
-        createTimelineEvent(projectId, "Export generated", "Prepared JSON backup snapshot.", "export_generated"),
+        createTimelineEvent(projectId, "Export generated", "Prepared JSON project record.", "export_generated"),
         ...state.timelineEvents,
       ],
     });

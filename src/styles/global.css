@@ -60,73 +60,114 @@ body {
 }
 
 :root[data-theme="dark"] .bg-white {
-  background-color: #171d22;
+  background-color: #171d22 !important;
 }
 
 :root[data-theme="dark"] .bg-slate-50,
 :root[data-theme="dark"] .bg-slate-100 {
-  background-color: #222b33;
+  background-color: #222b33 !important;
+}
+
+:root[data-theme="dark"] .bg-\[var\(--color-app-bg\)\] {
+  background-color: var(--color-app-bg) !important;
+}
+
+:root[data-theme="dark"] .bg-\[var\(--color-selection\)\] {
+  background-color: var(--color-selection) !important;
+}
+
+:root[data-theme="dark"] .bg-\[var\(--color-surface\)\] {
+  background-color: var(--color-surface) !important;
+}
+
+:root[data-theme="dark"] .bg-\[var\(--color-surface-subtle\)\] {
+  background-color: var(--color-surface-subtle) !important;
 }
 
 :root[data-theme="dark"] .text-slate-950,
 :root[data-theme="dark"] .text-slate-900,
 :root[data-theme="dark"] .text-slate-800,
 :root[data-theme="dark"] .text-slate-700 {
-  color: #edf2f7;
+  color: #edf2f7 !important;
 }
 
 :root[data-theme="dark"] .text-slate-600,
 :root[data-theme="dark"] .text-slate-500,
 :root[data-theme="dark"] .text-slate-400 {
-  color: #a6b2bd;
+  color: #a6b2bd !important;
 }
 
 :root[data-theme="dark"] .hover\:bg-slate-50:hover,
 :root[data-theme="dark"] .hover\:bg-slate-100:hover,
 :root[data-theme="dark"] .hover\:bg-slate-200:hover,
 :root[data-theme="dark"] .hover\:bg-white:hover {
-  background-color: #25303a;
+  background-color: #25303a !important;
 }
 
 :root[data-theme="dark"] .bg-blue-50 {
-  background-color: #14314f;
+  background-color: #14314f !important;
 }
 
 :root[data-theme="dark"] .border-blue-200 {
-  border-color: #245a8e;
+  border-color: #245a8e !important;
 }
 
 :root[data-theme="dark"] .text-blue-700 {
-  color: #9dccff;
+  color: #9dccff !important;
 }
 
 :root[data-theme="dark"] .bg-amber-50 {
-  background-color: #3f2d12;
+  background-color: #3f2d12 !important;
 }
 
 :root[data-theme="dark"] .border-amber-200 {
-  border-color: #8a621e;
+  border-color: #8a621e !important;
 }
 
 :root[data-theme="dark"] .text-amber-700 {
-  color: #f3c66e;
+  color: #f3c66e !important;
 }
 
 :root[data-theme="dark"] .bg-red-50,
 :root[data-theme="dark"] .bg-red-100 {
-  background-color: #44201f;
+  background-color: #44201f !important;
 }
 
 :root[data-theme="dark"] .border-red-200 {
-  border-color: #8f403c;
+  border-color: #8f403c !important;
 }
 
 :root[data-theme="dark"] .text-red-700 {
-  color: #ffaaa4;
+  color: #ffaaa4 !important;
 }
 
 :root[data-theme="dark"] .hover\:bg-red-100:hover {
-  background-color: #562927;
+  background-color: #562927 !important;
+}
+
+html[data-theme="dark"] .bg-white {
+  background-color: #171d22 !important;
+}
+
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-100 {
+  background-color: #222b33 !important;
+}
+
+html[data-theme="dark"] .bg-\[var\(--color-app-bg\)\] {
+  background-color: #111418 !important;
+}
+
+html[data-theme="dark"] .bg-\[var\(--color-selection\)\] {
+  background-color: #17324d !important;
+}
+
+html[data-theme="dark"] .bg-\[var\(--color-surface\)\] {
+  background-color: #181c20 !important;
+}
+
+html[data-theme="dark"] .bg-\[var\(--color-surface-subtle\)\] {
+  background-color: #222830 !important;
 }
 
 :root[data-theme="dark"] .flowdesk-markdown {
@@ -156,11 +197,20 @@ select {
 }
 
 button {
+  appearance: none;
   cursor: pointer;
 }
 
 button:disabled {
   cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .flowdesk-markdown {
