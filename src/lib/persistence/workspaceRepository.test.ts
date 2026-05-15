@@ -168,7 +168,7 @@ describe("workspaceRepository backup normalization", () => {
           name: "paper.pdf",
           fileType: "pdf",
           sizeLabel: "1.2 MB",
-          path: "/Users/example/paper.pdf",
+          path: "fixtures/paper.pdf",
           tags: [],
           importedAt: "2026-05-15T00:00:00.000Z",
         },

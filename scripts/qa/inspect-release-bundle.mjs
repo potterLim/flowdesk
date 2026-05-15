@@ -88,7 +88,7 @@ function requirePath(path, label) {
 }
 
 function expectPlistValue(infoPath, key, expected) {
-  const result = runCommand("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, infoPath]);
+  const result = runCommand("plutil", ["-extract", key, "raw", "-o", "-", infoPath]);
   const actual = result.output.trim();
   checks.push({
     status: result.ok && actual === expected ? "passed" : "failed",
