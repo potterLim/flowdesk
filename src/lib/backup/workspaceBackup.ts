@@ -1,6 +1,6 @@
-import type { WorkspaceSnapshot } from "../domain/workspace";
-import { normalizeWorkspaceSnapshot } from "./persistence/workspaceRepository";
-import { isTauriRuntime } from "./tauriRuntime";
+import type { WorkspaceSnapshot } from "../../domain/workspace";
+import { normalizeWorkspaceSnapshot } from "../persistence/workspaceRepository";
+import { isTauriRuntime } from "../platform/tauriRuntime";
 
 export type WorkspaceBackupSaveResult =
   | { status: "saved"; path: string }

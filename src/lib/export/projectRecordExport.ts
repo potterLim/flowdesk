@@ -7,8 +7,8 @@ import type {
   WorkSession,
   WorkspaceFile,
   WorkspaceSnapshot,
-} from "../domain/workspace";
-import { getElapsedMinutes } from "./date";
+} from "../../domain/workspace";
+import { getElapsedMinutes } from "../date";
 
 export interface ProjectRecordSnapshot {
   project: Project;

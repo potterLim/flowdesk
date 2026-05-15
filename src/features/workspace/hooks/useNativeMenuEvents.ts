@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isTauriRuntime } from "../../../lib/tauriRuntime";
+import { isTauriRuntime } from "../../../lib/platform/tauriRuntime";
 
 export type NativeWorkspaceMenuCommand =
   | "new_project"

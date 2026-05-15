@@ -1,4 +1,4 @@
-import { isTauriRuntime } from "./tauriRuntime";
+import { isTauriRuntime } from "../platform/tauriRuntime";
 
 export type ExportFormat = "markdown" | "json";
 

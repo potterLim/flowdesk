@@ -18,10 +18,10 @@ import {
   revealSavedProjectRecord,
   saveProjectRecord,
   type ExportFormat,
-} from "../../lib/exportProjectRecord";
-import { saveReleaseDiagnostics } from "../../lib/releaseDiagnostics";
-import { saveWorkspaceBackup, selectWorkspaceBackup } from "../../lib/workspaceBackup";
-import { openWorkspaceFile, revealWorkspaceFile, selectWorkspaceFiles } from "../../lib/workspaceFiles";
+} from "../../lib/export/exportProjectRecord";
+import { saveWorkspaceBackup, selectWorkspaceBackup } from "../../lib/backup/workspaceBackup";
+import { saveReleaseDiagnostics } from "../../lib/diagnostics/releaseDiagnostics";
+import { openWorkspaceFile, revealWorkspaceFile, selectWorkspaceFiles } from "../../lib/platform/workspaceFiles";
 import {
   useWorkspaceStore,
   type CreateProjectInput,
@@ -31,26 +31,22 @@ import {
 import { CommandPalette, type CommandPaletteItem } from "./components/CommandPalette";
 import { WorkspaceHeader, ViewTabs } from "./components/WorkspaceHeader";
 import { ProjectSidebar } from "./components/ProjectSidebar";
-import {
-  ConfirmDialog,
-  CreateProjectDialog,
-  CreateTaskDialog,
-  ProjectSettingsDialog,
-  WorkspaceSettingsDialog,
-} from "./components/WorkspaceDialogs";
+import { ConfirmDialog } from "./components/dialogs/ConfirmDialog";
+import { CreateProjectDialog } from "./components/dialogs/CreateProjectDialog";
+import { CreateTaskDialog } from "./components/dialogs/CreateTaskDialog";
+import { ProjectSettingsDialog } from "./components/dialogs/ProjectSettingsDialog";
+import { WorkspaceSettingsDialog } from "./components/dialogs/WorkspaceSettingsDialog";
 import { FirstRunView, WorkspaceBootView } from "./components/WorkspaceOnboarding";
 import { useNativeMenuEvents, type NativeWorkspaceMenuCommand } from "./hooks/useNativeMenuEvents";
 import { useWorkspaceTheme } from "./hooks/useWorkspaceTheme";
+import { ExportsView } from "./views/ExportsView";
 import { FilesView } from "./views/FilesView";
-import {
-  ExportsView,
-  NotesView,
-  OverviewView,
-  PersistenceAlert,
-  SessionsView,
-  TasksView,
-  TimelineView,
-} from "./views/WorkspaceViews";
+import { NotesView } from "./views/NotesView";
+import { OverviewView } from "./views/OverviewView";
+import { PersistenceAlert } from "./views/PersistenceAlert";
+import { SessionsView } from "./views/SessionsView";
+import { TasksView } from "./views/TasksView";
+import { TimelineView } from "./views/TimelineView";
 import { viewItems } from "./workspaceConstants";
 import {
   getErrorMessage,

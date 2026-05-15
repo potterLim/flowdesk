@@ -1,4 +1,4 @@
-import type { ExportFormat } from "../../lib/exportProjectRecord";
+import type { ExportFormat } from "../../lib/export/exportProjectRecord";
 
 export type ThemeMode = "system" | "light" | "dark";
 

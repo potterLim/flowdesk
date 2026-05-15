@@ -21,7 +21,7 @@ import {
   buildProjectRecordJson,
   buildProjectRecordMarkdown,
   getProjectRecordSnapshot,
-} from "../lib/projectRecordExport";
+} from "../lib/export/projectRecordExport";
 
 export type PersistenceStatus = "hydrating" | "saving" | "saved" | "error";
 

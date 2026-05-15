@@ -1,4 +1,4 @@
-import { isTauriRuntime } from "./tauriRuntime";
+import { isTauriRuntime } from "../platform/tauriRuntime";
 
 export type DiagnosticsSaveResult =
   | { status: "saved"; path: string }

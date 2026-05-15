@@ -1,4 +1,4 @@
-import type { WorkspaceFileType } from "../domain/workspace";
+import type { WorkspaceFileType } from "../../domain/workspace";
 import { isTauriRuntime } from "./tauriRuntime";
 
 export interface SelectedWorkspaceFile {

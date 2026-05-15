@@ -1,0 +1,90 @@
+import { Database, Trash2, X } from "lucide-react";
+import { clsx } from "clsx";
+import { useEffect, useId, useRef } from "react";
+import { useDialogControls } from "../../hooks/useDialogControls";
+
+export function ConfirmDialog({
+  isOpen,
+  title,
+  detail,
+  confirmLabel,
+  variant = "danger",
+  onCancel,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  title: string;
+  detail: string;
+  confirmLabel: string;
+  variant?: "danger" | "warning";
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onCancel);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const generatedDialogId = useId();
+  const dialogTitleId = `${generatedDialogId}-title`;
+  const dialogDetailId = `${generatedDialogId}-detail`;
+  const Icon = variant === "danger" ? Trash2 : Database;
+  const iconClass = variant === "danger" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700";
+  const confirmClass =
+    variant === "danger"
+      ? "bg-red-600 text-white hover:bg-red-700"
+      : "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-strong)]";
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const focusFrame = window.requestAnimationFrame(() => cancelButtonRef.current?.focus());
+
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [isOpen]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm" onMouseDown={onCancel}>
+      <div
+        ref={dialogRef}
+        role={variant === "danger" ? "alertdialog" : "dialog"}
+        aria-modal="true"
+        aria-labelledby={dialogTitleId}
+        aria-describedby={dialogDetailId}
+        onMouseDown={(event) => event.stopPropagation()}
+        className="w-full max-w-[460px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.24)]"
+      >
+        <div className="px-5 pt-5">
+          <div className={clsx("flex h-10 w-10 items-center justify-center rounded-lg", iconClass)}>
+            <Icon size={18} />
+          </div>
+          <h2 id={dialogTitleId} className="mt-4 text-[17px] font-semibold text-[var(--color-ink)]">
+            {title}
+          </h2>
+          <p id={dialogDetailId} className="mt-2 text-[13px] leading-6 text-[var(--color-muted)]">{detail}</p>
+        </div>
+        <div className="mt-5 flex items-center justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4">
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            autoFocus
+            onClick={onCancel}
+            className="h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={clsx("h-9 rounded-md px-3 text-[13px] font-semibold whitespace-nowrap transition", confirmClass)}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

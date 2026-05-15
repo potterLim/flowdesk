@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceSnapshot } from "../domain/workspace";
-import { readWorkspaceBackup } from "./workspaceBackup";
+import type { WorkspaceSnapshot } from "../../domain/workspace";
+import { readWorkspaceBackup } from "../backup/workspaceBackup";
 import {
   buildProjectRecordJson,
   buildProjectRecordMarkdown,

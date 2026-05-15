@@ -66,8 +66,6 @@ CREATE TABLE IF NOT EXISTS files (
   file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'png', 'jpg', 'csv', 'txt', 'markdown')),
   size_label TEXT NOT NULL,
   path TEXT NOT NULL,
-  source_path TEXT,
-  storage_mode TEXT NOT NULL DEFAULT 'linked' CHECK (storage_mode IN ('managed', 'linked')),
   tags_json TEXT NOT NULL,
   imported_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -82,3 +80,5 @@ CREATE TABLE IF NOT EXISTS timeline_events (
   created_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+
+PRAGMA user_version = 1;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readWorkspaceBackup } from "../workspaceBackup";
+import { readWorkspaceBackup } from "../backup/workspaceBackup";
 import type { SqlDatabase } from "./workspaceRepository";
 import { initializeWorkspaceSchema, normalizeWorkspaceSnapshot } from "./workspaceRepository";
 
