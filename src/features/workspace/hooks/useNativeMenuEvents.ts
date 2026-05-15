@@ -9,6 +9,7 @@ export type NativeWorkspaceMenuCommand =
   | "export_markdown"
   | "save_workspace_backup"
   | "restore_workspace_backup"
+  | "open_workspace_settings"
   | "open_command_palette"
   | "search_projects";
 
@@ -21,6 +22,7 @@ function isNativeWorkspaceMenuCommand(value: unknown): value is NativeWorkspaceM
     value === "export_markdown" ||
     value === "save_workspace_backup" ||
     value === "restore_workspace_backup" ||
+    value === "open_workspace_settings" ||
     value === "open_command_palette" ||
     value === "search_projects"
   );

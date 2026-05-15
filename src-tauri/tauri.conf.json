@@ -31,6 +31,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "FlowDesk",
+    "category": "Productivity",
+    "shortDescription": "Local-first research and study workspace.",
+    "longDescription": "FlowDesk is a focused desktop workspace for projects, notes, tasks, sessions, files, and exportable research records.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -38,6 +42,22 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "dmg": {
+        "windowSize": {
+          "width": 660,
+          "height": 420
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 190
+        }
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

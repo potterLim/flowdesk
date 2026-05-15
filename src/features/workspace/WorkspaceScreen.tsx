@@ -86,6 +86,7 @@ export function WorkspaceScreen() {
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isCreateTaskDialogOpen, setIsCreateTaskDialogOpen] = useState(false);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
+  const [isWorkspaceSettingsOpen, setIsWorkspaceSettingsOpen] = useState(false);
   const [pendingProjectDeleteId, setPendingProjectDeleteId] = useState<string | null>(null);
   const [pendingNoteDeleteId, setPendingNoteDeleteId] = useState<string | null>(null);
   const [pendingTaskDeleteId, setPendingTaskDeleteId] = useState<string | null>(null);
@@ -414,6 +415,11 @@ export function WorkspaceScreen() {
         return;
       }
 
+      if (command === "open_workspace_settings") {
+        setIsWorkspaceSettingsOpen(true);
+        return;
+      }
+
       if (command === "open_command_palette") {
         setIsCommandPaletteOpen(true);
         return;
@@ -439,6 +445,14 @@ export function WorkspaceScreen() {
 
   const commandPaletteItems = useMemo<CommandPaletteItem[]>(
     () => [
+      {
+        id: "workspace-settings",
+        label: "Workspace Settings",
+        detail: "Appearance, backups, and local storage",
+        shortcut: "Command/Ctrl+,",
+        icon: Settings2,
+        onSelect: () => setIsWorkspaceSettingsOpen(true),
+      },
       {
         id: "new-project",
         label: "New Project",
@@ -566,6 +580,12 @@ export function WorkspaceScreen() {
         return;
       }
 
+      if (key === ",") {
+        event.preventDefault();
+        setIsWorkspaceSettingsOpen(true);
+        return;
+      }
+
       if (key === "k") {
         event.preventDefault();
         document.getElementById("flowdesk-project-search")?.focus();
@@ -650,7 +670,7 @@ export function WorkspaceScreen() {
   ]);
 
   if (persistenceStatus === "hydrating") {
-    return <WorkspaceBootView themeMode={themeMode} onChangeTheme={setThemeMode} />;
+    return <WorkspaceBootView />;
   }
 
   return (
@@ -663,15 +683,11 @@ export function WorkspaceScreen() {
         onToggleProjectPinned={toggleProjectPinned}
         onArchiveProject={archiveProject}
         onRestoreProject={restoreProject}
-        themeMode={themeMode}
-        onChangeTheme={setThemeMode}
+        onOpenWorkspaceSettings={() => setIsWorkspaceSettingsOpen(true)}
         persistenceMode={persistenceMode}
         persistenceStatus={persistenceStatus}
         persistenceError={persistenceError}
         lastPersistedAt={lastPersistedAt}
-        workspaceBackupState={workspaceBackupState}
-        onSaveWorkspaceBackup={handleSaveWorkspaceBackup}
-        onSelectWorkspaceBackup={handleSelectWorkspaceBackup}
       />
       <main id="flowdesk-main" className="flex min-w-0 flex-1 flex-col">
         {selectedProject ? (
@@ -786,6 +802,23 @@ export function WorkspaceScreen() {
       </main>
       <CreateProjectDialog isOpen={isCreateProjectDialogOpen} onClose={closeCreateProjectDialog} onCreateProject={handleCreateProject} />
       <CreateTaskDialog isOpen={isCreateTaskDialogOpen} onClose={closeCreateTaskDialog} onCreateTask={handleCreateTask} />
+      <WorkspaceSettingsDialog
+        isOpen={isWorkspaceSettingsOpen}
+        themeMode={themeMode}
+        persistenceMode={persistenceMode}
+        persistenceStatus={persistenceStatus}
+        persistenceError={persistenceError}
+        lastPersistedAt={lastPersistedAt}
+        workspaceBackupState={workspaceBackupState}
+        onChangeTheme={setThemeMode}
+        onSaveWorkspaceBackup={handleSaveWorkspaceBackup}
+        onSelectWorkspaceBackup={handleSelectWorkspaceBackup}
+        onRequestRepair={() => {
+          setIsWorkspaceSettingsOpen(false);
+          setIsStorageRepairConfirmOpen(true);
+        }}
+        onClose={() => setIsWorkspaceSettingsOpen(false)}
+      />
       {selectedProject && (
         <ProjectSettingsDialog
           project={selectedProject}
@@ -846,13 +879,7 @@ export function WorkspaceScreen() {
   );
 }
 
-function WorkspaceBootView({
-  themeMode,
-  onChangeTheme,
-}: {
-  themeMode: ThemeMode;
-  onChangeTheme: (themeMode: ThemeMode) => void;
-}) {
+function WorkspaceBootView() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--color-app-bg)] px-6 text-[var(--color-ink)]">
       <section
@@ -868,11 +895,6 @@ function WorkspaceBootView({
               <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">FlowDesk</h1>
               <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Opening your local workspace</p>
             </div>
-          </div>
-          <div className="flex items-center gap-1" aria-label="Theme">
-            <IconButton label="Use system theme" icon={Monitor} isActive={themeMode === "system"} onClick={() => onChangeTheme("system")} />
-            <IconButton label="Use light theme" icon={Sun} isActive={themeMode === "light"} onClick={() => onChangeTheme("light")} />
-            <IconButton label="Use dark theme" icon={Moon} isActive={themeMode === "dark"} onClick={() => onChangeTheme("dark")} />
           </div>
         </div>
         <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-subtle)]">
@@ -1459,6 +1481,189 @@ function ProjectSettingsDialog({
   );
 }
 
+function WorkspaceSettingsDialog({
+  isOpen,
+  themeMode,
+  persistenceMode,
+  persistenceStatus,
+  persistenceError,
+  lastPersistedAt,
+  workspaceBackupState,
+  onChangeTheme,
+  onSaveWorkspaceBackup,
+  onSelectWorkspaceBackup,
+  onRequestRepair,
+  onClose,
+}: {
+  isOpen: boolean;
+  themeMode: ThemeMode;
+  persistenceMode: WorkspacePersistenceMode;
+  persistenceStatus: PersistenceStatus;
+  persistenceError: string | null;
+  lastPersistedAt: string | null;
+  workspaceBackupState: WorkspaceBackupState | null;
+  onChangeTheme: (themeMode: ThemeMode) => void;
+  onSaveWorkspaceBackup: () => void;
+  onSelectWorkspaceBackup: () => void;
+  onRequestRepair: () => void;
+  onClose: () => void;
+}) {
+  const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onClose);
+  const generatedDialogId = useId();
+  const titleId = `${generatedDialogId}-title`;
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <div
+        ref={dialogRef}
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-[620px] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
+      >
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
+          <div>
+            <h2 id={titleId} className="text-[16px] font-semibold text-[var(--color-ink)]">
+              Workspace Settings
+            </h2>
+            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Appearance, backups, and local storage.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close workspace settings"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="max-h-[min(680px,calc(100vh-140px))] overflow-y-auto px-5 py-5">
+          <section>
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-selection)] text-[var(--color-accent)]">
+                <Monitor size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Appearance</h3>
+                <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
+                  Match the system by default, or choose a fixed theme for this workspace.
+                </p>
+                <ThemePreferenceGroup value={themeMode} onChange={onChangeTheme} />
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 border-t border-[var(--color-border)] pt-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-selection)] text-[var(--color-accent)]">
+                <Database size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Local Data</h3>
+                <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
+                  FlowDesk keeps workspace records on this device. Save a JSON backup before moving machines or testing recovery.
+                </p>
+                <div className="mt-3">
+                  <PersistenceStatusBadge
+                    mode={persistenceMode}
+                    status={persistenceStatus}
+                    error={persistenceError}
+                    lastPersistedAt={lastPersistedAt}
+                  />
+                </div>
+                <WorkspaceDataControls
+                  workspaceBackupState={workspaceBackupState}
+                  onSaveWorkspaceBackup={onSaveWorkspaceBackup}
+                  onSelectWorkspaceBackup={onSelectWorkspaceBackup}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 border-t border-[var(--color-border)] pt-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                <Database size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Storage Recovery</h3>
+                <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
+                  If the local database cannot open, FlowDesk can move the current SQLite files to a recovery folder and start clean.
+                </p>
+                <button
+                  type="button"
+                  onClick={onRequestRepair}
+                  className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-[13px] font-semibold whitespace-nowrap text-amber-800 transition hover:bg-amber-100"
+                >
+                  <Database size={14} />
+                  Repair Storage
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="flex items-center justify-end border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white transition hover:bg-[var(--color-accent-strong)]"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ThemePreferenceGroup({
+  value,
+  onChange,
+}: {
+  value: ThemeMode;
+  onChange: (themeMode: ThemeMode) => void;
+}) {
+  const options: Array<{ value: ThemeMode; label: string; icon: LucideIcon }> = [
+    { value: "system", label: "System", icon: Monitor },
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+  ];
+
+  return (
+    <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="Appearance theme">
+      {options.map((option) => {
+        const Icon = option.icon;
+        const isSelected = value === option.value;
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={isSelected}
+            className={clsx(
+              "inline-flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-[13px] font-semibold whitespace-nowrap transition",
+              isSelected
+                ? "border-[var(--color-accent)] bg-[var(--color-selection)] text-[var(--color-accent)]"
+                : "border-[var(--color-border)] bg-[var(--color-surface)] text-slate-700 hover:bg-slate-50",
+            )}
+          >
+            <Icon size={15} />
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ConfirmDialog({
   isOpen,
   title,
@@ -1553,15 +1758,11 @@ interface ProjectSidebarProps {
   onToggleProjectPinned: (projectId: string) => void;
   onArchiveProject: (projectId: string) => void;
   onRestoreProject: (projectId: string) => void;
-  themeMode: ThemeMode;
-  onChangeTheme: (themeMode: ThemeMode) => void;
+  onOpenWorkspaceSettings: () => void;
   persistenceMode: WorkspacePersistenceMode;
   persistenceStatus: PersistenceStatus;
   persistenceError: string | null;
   lastPersistedAt: string | null;
-  workspaceBackupState: WorkspaceBackupState | null;
-  onSaveWorkspaceBackup: () => void;
-  onSelectWorkspaceBackup: () => void;
 }
 
 function ProjectSidebar({
@@ -1572,15 +1773,11 @@ function ProjectSidebar({
   onToggleProjectPinned,
   onArchiveProject,
   onRestoreProject,
-  themeMode,
-  onChangeTheme,
+  onOpenWorkspaceSettings,
   persistenceMode,
   persistenceStatus,
   persistenceError,
   lastPersistedAt,
-  workspaceBackupState,
-  onSaveWorkspaceBackup,
-  onSelectWorkspaceBackup,
 }: ProjectSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
@@ -1605,11 +1802,7 @@ function ProjectSidebar({
             <h1 className="text-[19px] font-semibold tracking-normal text-slate-950">FlowDesk</h1>
             <p className="mt-0.5 text-[12px] font-medium text-[var(--color-muted)]">Research workspace</p>
           </div>
-          <div className="flex items-center gap-1" aria-label="Theme">
-            <IconButton label="Use system theme" icon={Monitor} isActive={themeMode === "system"} onClick={() => onChangeTheme("system")} />
-            <IconButton label="Use light theme" icon={Sun} isActive={themeMode === "light"} onClick={() => onChangeTheme("light")} />
-            <IconButton label="Use dark theme" icon={Moon} isActive={themeMode === "dark"} onClick={() => onChangeTheme("dark")} />
-          </div>
+          <IconButton label="Workspace settings" icon={Settings2} onClick={onOpenWorkspaceSettings} />
         </div>
         <label className="mt-4 flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-app-bg)] px-3 text-[13px] text-[var(--color-muted)]">
           <Search size={15} />
@@ -1697,11 +1890,6 @@ function ProjectSidebar({
           status={persistenceStatus}
           error={persistenceError}
           lastPersistedAt={lastPersistedAt}
-        />
-        <WorkspaceDataControls
-          workspaceBackupState={workspaceBackupState}
-          onSaveWorkspaceBackup={onSaveWorkspaceBackup}
-          onSelectWorkspaceBackup={onSelectWorkspaceBackup}
         />
         {projects.length > 0 && (
           <button
@@ -1803,16 +1991,16 @@ function WorkspaceDataControls({
           onClick={onSaveWorkspaceBackup}
           disabled={isBusy}
           aria-keyshortcuts="Meta+Shift+B Control+Shift+B"
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
         >
           <Download size={13} />
-          Backup
+          Back Up
         </button>
         <button
           type="button"
           onClick={onSelectWorkspaceBackup}
           disabled={isBusy}
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
         >
           <Upload size={13} />
           Restore
