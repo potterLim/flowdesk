@@ -33,6 +33,7 @@ export function FilesView({
   }, [files, selectedFileId]);
 
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? files[0];
+  const selectedFileStorageLabel = selectedFile?.storageMode === "managed" ? "Managed copy" : "Linked file";
 
   return (
     <div className="grid h-auto min-h-0 grid-cols-1 gap-5 pt-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:h-full">
@@ -72,6 +73,7 @@ export function FilesView({
                 key={file.id}
                 type="button"
                 onClick={() => setSelectedFileId(file.id)}
+                aria-current={selectedFile?.id === file.id ? "true" : undefined}
                 className={clsx(
                   "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition",
                   selectedFile?.id === file.id
@@ -85,7 +87,7 @@ export function FilesView({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-semibold text-[var(--color-ink)]">{file.name}</span>
                   <span className="mt-0.5 block truncate text-[12px] text-[var(--color-muted)]">
-                    {file.fileType.toUpperCase()} · {file.sizeLabel}
+                    {file.fileType.toUpperCase()} · {file.sizeLabel} · {file.storageMode === "managed" ? "Managed" : "Linked"}
                   </span>
                 </span>
               </button>
@@ -105,20 +107,39 @@ export function FilesView({
                 </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-[18px] font-semibold text-[var(--color-ink)]">{selectedFile.name}</h3>
-                  <p className="mt-1 text-[13px] text-[var(--color-muted)]">
-                    {selectedFile.fileType.toUpperCase()} · {selectedFile.sizeLabel}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="text-[13px] text-[var(--color-muted)]">
+                      {selectedFile.fileType.toUpperCase()} · {selectedFile.sizeLabel}
+                    </p>
+                    <span className="rounded-md border border-[var(--color-border)] bg-[var(--color-app-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-muted)]">
+                      {selectedFileStorageLabel}
+                    </span>
+                  </div>
                 </div>
               </div>
               <dl className="mt-6 grid gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-app-bg)] p-4 text-[13px]">
+                <div className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)]">
+                  <dt className="font-semibold text-[var(--color-muted)]">Storage</dt>
+                  <dd className="text-[var(--color-ink)]">
+                    {selectedFile.storageMode === "managed"
+                      ? "Copied into FlowDesk app data"
+                      : "Linked to the original location"}
+                  </dd>
+                </div>
                 <div className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)]">
                   <dt className="font-semibold text-[var(--color-muted)]">Imported</dt>
                   <dd className="text-[var(--color-ink)]">{formatDateTime(selectedFile.importedAt)}</dd>
                 </div>
                 <div className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)]">
                   <dt className="font-semibold text-[var(--color-muted)]">Location</dt>
-                  <dd className="min-w-0 truncate text-[var(--color-ink)]">{selectedFile.path}</dd>
+                  <dd className="min-w-0 truncate text-[var(--color-ink)]" title={selectedFile.path}>{selectedFile.path}</dd>
                 </div>
+                {selectedFile.sourcePath && (
+                  <div className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)]">
+                    <dt className="font-semibold text-[var(--color-muted)]">Original</dt>
+                    <dd className="min-w-0 truncate text-[var(--color-ink)]" title={selectedFile.sourcePath}>{selectedFile.sourcePath}</dd>
+                  </div>
+                )}
               </dl>
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <button

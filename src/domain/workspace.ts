@@ -67,6 +67,8 @@ export interface ReferenceRecord {
 
 export type WorkspaceFileType = "pdf" | "png" | "jpg" | "csv" | "txt" | "markdown";
 
+export type WorkspaceFileStorageMode = "managed" | "linked";
+
 export interface WorkspaceFile {
   id: string;
   projectId: string;
@@ -74,6 +76,8 @@ export interface WorkspaceFile {
   fileType: WorkspaceFileType;
   sizeLabel: string;
   path: string;
+  sourcePath: string | null;
+  storageMode: WorkspaceFileStorageMode;
   tags: string[];
   importedAt: string;
 }

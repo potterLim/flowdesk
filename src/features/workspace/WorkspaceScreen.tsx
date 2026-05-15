@@ -33,7 +33,16 @@ import remarkGfm from "remark-gfm";
 import { clsx } from "clsx";
 import type { FormEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import type { Project, Task, TaskPriority, TaskStatus, TimelineEvent, WorkspaceFile, WorkspaceView } from "../../domain/workspace";
+import type {
+  Project,
+  Task,
+  TaskPriority,
+  TaskStatus,
+  TimelineEvent,
+  WorkspaceFile,
+  WorkspaceSnapshot,
+  WorkspaceView,
+} from "../../domain/workspace";
 import { formatDateTime, formatDuration, formatShortDate, getElapsedMinutes } from "../../lib/date";
 import {
   revealSavedProjectRecord,
@@ -41,6 +50,7 @@ import {
   type ExportFormat,
 } from "../../lib/exportProjectRecord";
 import type { WorkspacePersistenceMode } from "../../lib/persistence/workspaceRepository";
+import { saveWorkspaceBackup, selectWorkspaceBackup } from "../../lib/workspaceBackup";
 import { openWorkspaceFile, revealWorkspaceFile, selectWorkspaceFiles } from "../../lib/workspaceFiles";
 import {
   useWorkspaceStore,
@@ -64,7 +74,7 @@ import {
   isTextEntryTarget,
   parseTags,
 } from "./workspaceUtils";
-import type { ExportSaveState, ThemeMode } from "./workspaceTypes";
+import type { ExportSaveState, ThemeMode, WorkspaceBackupState } from "./workspaceTypes";
 
 const MarkdownEditor = lazy(() =>
   import("../../components/MarkdownEditor").then((module) => ({
@@ -79,7 +89,10 @@ export function WorkspaceScreen() {
   const [pendingProjectDeleteId, setPendingProjectDeleteId] = useState<string | null>(null);
   const [pendingNoteDeleteId, setPendingNoteDeleteId] = useState<string | null>(null);
   const [pendingTaskDeleteId, setPendingTaskDeleteId] = useState<string | null>(null);
+  const [pendingWorkspaceRestore, setPendingWorkspaceRestore] = useState<WorkspaceSnapshot | null>(null);
+  const [isStorageRepairConfirmOpen, setIsStorageRepairConfirmOpen] = useState(false);
   const [exportSaveState, setExportSaveState] = useState<ExportSaveState | null>(null);
+  const [workspaceBackupState, setWorkspaceBackupState] = useState<WorkspaceBackupState | null>(null);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
@@ -87,6 +100,7 @@ export function WorkspaceScreen() {
   const notes = useWorkspaceStore((state) => state.notes);
   const tasks = useWorkspaceStore((state) => state.tasks);
   const sessions = useWorkspaceStore((state) => state.sessions);
+  const references = useWorkspaceStore((state) => state.references);
   const files = useWorkspaceStore((state) => state.files);
   const timelineEvents = useWorkspaceStore((state) => state.timelineEvents);
   const selectedProjectId = useWorkspaceStore((state) => state.selectedProjectId);
@@ -120,6 +134,8 @@ export function WorkspaceScreen() {
   const endActiveSession = useWorkspaceStore((state) => state.endActiveSession);
   const prepareMarkdownExport = useWorkspaceStore((state) => state.prepareMarkdownExport);
   const prepareJsonExport = useWorkspaceStore((state) => state.prepareJsonExport);
+  const replaceWorkspace = useWorkspaceStore((state) => state.replaceWorkspace);
+  const repairWorkspaceStorage = useWorkspaceStore((state) => state.repairWorkspaceStorage);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const projectNotes = selectedProject ? notes.filter((note) => note.projectId === selectedProject.id) : [];
@@ -130,6 +146,18 @@ export function WorkspaceScreen() {
   const projectTimelineEvents = selectedProject ? timelineEvents.filter((event) => event.projectId === selectedProject.id) : [];
   const activeSession = projectSessions.find((session) => session.endedAt === null);
   const canEditProject = selectedProject?.status === "active";
+  const workspaceSnapshot = useMemo<WorkspaceSnapshot>(
+    () => ({
+      projects,
+      notes,
+      tasks,
+      sessions,
+      references,
+      files,
+      timelineEvents,
+    }),
+    [files, notes, projects, references, sessions, tasks, timelineEvents],
+  );
   const openCreateProjectDialog = () => setIsCreateProjectDialogOpen(true);
   const closeCreateProjectDialog = () => setIsCreateProjectDialogOpen(false);
   const openCreateTaskDialog = () => setIsCreateTaskDialogOpen(true);
@@ -250,6 +278,66 @@ export function WorkspaceScreen() {
     }
   };
 
+  const handleSaveWorkspaceBackup = async () => {
+    setWorkspaceBackupState({ status: "saving" });
+
+    try {
+      const result = await saveWorkspaceBackup(workspaceSnapshot);
+
+      if (result.status === "saved") {
+        setWorkspaceBackupState({ status: "saved", path: result.path });
+        return;
+      }
+
+      if (result.status === "downloaded") {
+        setWorkspaceBackupState({ status: "downloaded", fileName: result.fileName });
+        return;
+      }
+
+      setWorkspaceBackupState({ status: "cancelled" });
+    } catch (error: unknown) {
+      setWorkspaceBackupState({ status: "error", message: getErrorMessage(error) });
+    }
+  };
+
+  const handleSelectWorkspaceBackup = async () => {
+    setWorkspaceBackupState({ status: "selecting" });
+
+    try {
+      const snapshot = await selectWorkspaceBackup();
+
+      if (!snapshot) {
+        setWorkspaceBackupState({ status: "cancelled" });
+        return;
+      }
+
+      setPendingWorkspaceRestore(snapshot);
+      setWorkspaceBackupState({ status: "ready", projectCount: snapshot.projects.length });
+    } catch (error: unknown) {
+      setWorkspaceBackupState({ status: "error", message: getErrorMessage(error) });
+    }
+  };
+
+  const handleConfirmWorkspaceRestore = () => {
+    if (!pendingWorkspaceRestore) {
+      return;
+    }
+
+    replaceWorkspace(pendingWorkspaceRestore);
+    setWorkspaceBackupState({ status: "restored", projectCount: pendingWorkspaceRestore.projects.length });
+    setPendingWorkspaceRestore(null);
+  };
+
+  const handleCancelWorkspaceRestore = () => {
+    setPendingWorkspaceRestore(null);
+    setWorkspaceBackupState({ status: "cancelled" });
+  };
+
+  const handleConfirmStorageRepair = () => {
+    setIsStorageRepairConfirmOpen(false);
+    repairWorkspaceStorage();
+  };
+
   const handleUpdateProject = (input: UpdateProjectInput) => {
     if (!selectedProject) {
       return;
@@ -316,6 +404,16 @@ export function WorkspaceScreen() {
         return;
       }
 
+      if (command === "save_workspace_backup") {
+        void handleSaveWorkspaceBackup();
+        return;
+      }
+
+      if (command === "restore_workspace_backup") {
+        void handleSelectWorkspaceBackup();
+        return;
+      }
+
       if (command === "open_command_palette") {
         setIsCommandPaletteOpen(true);
         return;
@@ -325,7 +423,16 @@ export function WorkspaceScreen() {
         document.getElementById("flowdesk-project-search")?.focus();
       }
     },
-    [canEditProject, createNote, handleImportFiles, handlePrepareMarkdownExport, openCreateTaskDialog, selectedProject],
+    [
+      canEditProject,
+      createNote,
+      handleImportFiles,
+      handlePrepareMarkdownExport,
+      handleSaveWorkspaceBackup,
+      handleSelectWorkspaceBackup,
+      openCreateTaskDialog,
+      selectedProject,
+    ],
   );
 
   useNativeMenuEvents(handleNativeMenuCommand);
@@ -386,6 +493,21 @@ export function WorkspaceScreen() {
         onSelect: handlePrepareMarkdownExport,
       },
       {
+        id: "save-workspace-backup",
+        label: "Back Up Workspace",
+        detail: "Save a complete JSON backup",
+        shortcut: "Command/Ctrl+Shift+B",
+        icon: Database,
+        onSelect: handleSaveWorkspaceBackup,
+      },
+      {
+        id: "restore-workspace-backup",
+        label: "Restore Backup",
+        detail: "Review a backup before replacing local data",
+        icon: Upload,
+        onSelect: handleSelectWorkspaceBackup,
+      },
+      {
         id: "project-settings",
         label: "Project Settings",
         detail: selectedProject ? selectedProject.title : "Select a project first",
@@ -418,6 +540,8 @@ export function WorkspaceScreen() {
       endActiveSession,
       handleImportFiles,
       handlePrepareMarkdownExport,
+      handleSaveWorkspaceBackup,
+      handleSelectWorkspaceBackup,
       openCreateProjectDialog,
       openCreateTaskDialog,
       selectedProject,
@@ -490,6 +614,12 @@ export function WorkspaceScreen() {
         return;
       }
 
+      if (key === "b" && event.shiftKey) {
+        event.preventDefault();
+        void handleSaveWorkspaceBackup();
+        return;
+      }
+
       if (event.key === "Enter" && selectedProject && canEditProject) {
         event.preventDefault();
 
@@ -512,6 +642,7 @@ export function WorkspaceScreen() {
     endActiveSession,
     handleImportFiles,
     handlePrepareMarkdownExport,
+    handleSaveWorkspaceBackup,
     openCreateTaskDialog,
     selectedProject,
     setActiveView,
@@ -538,8 +669,11 @@ export function WorkspaceScreen() {
         persistenceStatus={persistenceStatus}
         persistenceError={persistenceError}
         lastPersistedAt={lastPersistedAt}
+        workspaceBackupState={workspaceBackupState}
+        onSaveWorkspaceBackup={handleSaveWorkspaceBackup}
+        onSelectWorkspaceBackup={handleSelectWorkspaceBackup}
       />
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main id="flowdesk-main" className="flex min-w-0 flex-1 flex-col">
         {selectedProject ? (
           <>
             <WorkspaceHeader
@@ -557,7 +691,9 @@ export function WorkspaceScreen() {
             />
             <ViewTabs activeView={activeView} onSelectView={setActiveView} />
             <section className="min-h-0 flex-1 overflow-visible px-3 pb-5 sm:px-5 lg:overflow-hidden">
-              {persistenceStatus === "error" && <PersistenceAlert error={persistenceError} />}
+              {persistenceStatus === "error" && (
+                <PersistenceAlert error={persistenceError} onRequestRepair={() => setIsStorageRepairConfirmOpen(true)} />
+              )}
               {activeView === "overview" && (
                 <OverviewView
                   project={selectedProject}
@@ -634,7 +770,18 @@ export function WorkspaceScreen() {
             </section>
           </>
         ) : (
-          <FirstRunView onCreateProject={handleCreateProject} />
+          <>
+            {persistenceStatus === "error" && (
+              <div className="px-5 sm:px-8 lg:px-10">
+                <PersistenceAlert error={persistenceError} onRequestRepair={() => setIsStorageRepairConfirmOpen(true)} />
+              </div>
+            )}
+            <FirstRunView
+              workspaceBackupState={workspaceBackupState}
+              onCreateProject={handleCreateProject}
+              onSelectWorkspaceBackup={handleSelectWorkspaceBackup}
+            />
+          </>
         )}
       </main>
       <CreateProjectDialog isOpen={isCreateProjectDialogOpen} onClose={closeCreateProjectDialog} onCreateProject={handleCreateProject} />
@@ -671,6 +818,24 @@ export function WorkspaceScreen() {
         confirmLabel="Delete Task"
         onCancel={() => setPendingTaskDeleteId(null)}
         onConfirm={handleConfirmTaskDelete}
+      />
+      <ConfirmDialog
+        isOpen={pendingWorkspaceRestore !== null}
+        title="Restore Workspace Backup"
+        detail={`This will replace the current local workspace with ${pendingWorkspaceRestore?.projects.length ?? 0} backed-up projects. Create a fresh backup first if you need the current state.`}
+        confirmLabel="Restore Backup"
+        variant="warning"
+        onCancel={handleCancelWorkspaceRestore}
+        onConfirm={handleConfirmWorkspaceRestore}
+      />
+      <ConfirmDialog
+        isOpen={isStorageRepairConfirmOpen}
+        title="Rebuild Local Database"
+        detail="FlowDesk will move the current SQLite files into a recovery folder and open a clean local database. Managed files and JSON backups are not deleted."
+        confirmLabel="Rebuild Database"
+        variant="warning"
+        onCancel={() => setIsStorageRepairConfirmOpen(false)}
+        onConfirm={handleConfirmStorageRepair}
       />
       <CommandPalette
         isOpen={isCommandPaletteOpen}
@@ -718,7 +883,15 @@ function WorkspaceBootView({
   );
 }
 
-function FirstRunView({ onCreateProject }: { onCreateProject: (input: CreateProjectInput) => void }) {
+function FirstRunView({
+  workspaceBackupState,
+  onCreateProject,
+  onSelectWorkspaceBackup,
+}: {
+  workspaceBackupState: WorkspaceBackupState | null;
+  onCreateProject: (input: CreateProjectInput) => void;
+  onSelectWorkspaceBackup: () => void;
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -816,6 +989,27 @@ function FirstRunView({ onCreateProject }: { onCreateProject: (input: CreateProj
                 </div>
               );
             })}
+          </div>
+          <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-app-bg)] p-3">
+            <div className="flex items-start gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--color-selection)] text-[var(--color-accent)]">
+                <Database size={15} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-[var(--color-ink)]">Restore existing work</p>
+                <p className="mt-0.5 text-[12px] leading-5 text-[var(--color-muted)]">Open a FlowDesk JSON backup before creating a new project.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onSelectWorkspaceBackup}
+              disabled={workspaceBackupState?.status === "selecting"}
+              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              <Upload size={14} />
+              Restore Backup...
+            </button>
+            <WorkspaceBackupStatusMessage workspaceBackupState={workspaceBackupState} tone="compact" />
           </div>
         </aside>
       </div>
@@ -1268,6 +1462,7 @@ function ConfirmDialog({
   title,
   detail,
   confirmLabel,
+  variant = "danger",
   onCancel,
   onConfirm,
 }: {
@@ -1275,11 +1470,20 @@ function ConfirmDialog({
   title: string;
   detail: string;
   confirmLabel: string;
+  variant?: "danger" | "warning";
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onCancel);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogTitleId = `confirm-dialog-title-${variant}`;
+  const dialogDetailId = `confirm-dialog-detail-${variant}`;
+  const Icon = variant === "danger" ? Trash2 : Database;
+  const iconClass = variant === "danger" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700";
+  const confirmClass =
+    variant === "danger"
+      ? "bg-red-600 text-white hover:bg-red-700"
+      : "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-strong)]";
 
   useEffect(() => {
     if (!isOpen) {
@@ -1299,20 +1503,21 @@ function ConfirmDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm" onMouseDown={onCancel}>
       <div
         ref={dialogRef}
-        role="dialog"
+        role={variant === "danger" ? "alertdialog" : "dialog"}
         aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
+        aria-labelledby={dialogTitleId}
+        aria-describedby={dialogDetailId}
         onMouseDown={(event) => event.stopPropagation()}
         className="w-full max-w-[460px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.24)]"
       >
         <div className="px-5 pt-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-700">
-            <Trash2 size={18} />
+          <div className={clsx("flex h-10 w-10 items-center justify-center rounded-lg", iconClass)}>
+            <Icon size={18} />
           </div>
-          <h2 id="confirm-dialog-title" className="mt-4 text-[17px] font-semibold text-[var(--color-ink)]">
+          <h2 id={dialogTitleId} className="mt-4 text-[17px] font-semibold text-[var(--color-ink)]">
             {title}
           </h2>
-          <p className="mt-2 text-[13px] leading-6 text-[var(--color-muted)]">{detail}</p>
+          <p id={dialogDetailId} className="mt-2 text-[13px] leading-6 text-[var(--color-muted)]">{detail}</p>
         </div>
         <div className="mt-5 flex items-center justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4">
           <button
@@ -1327,7 +1532,7 @@ function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            className="h-9 rounded-md bg-red-600 px-3 text-[13px] font-semibold whitespace-nowrap text-white transition hover:bg-red-700"
+            className={clsx("h-9 rounded-md px-3 text-[13px] font-semibold whitespace-nowrap transition", confirmClass)}
           >
             {confirmLabel}
           </button>
@@ -1351,6 +1556,9 @@ interface ProjectSidebarProps {
   persistenceStatus: PersistenceStatus;
   persistenceError: string | null;
   lastPersistedAt: string | null;
+  workspaceBackupState: WorkspaceBackupState | null;
+  onSaveWorkspaceBackup: () => void;
+  onSelectWorkspaceBackup: () => void;
 }
 
 function ProjectSidebar({
@@ -1367,6 +1575,9 @@ function ProjectSidebar({
   persistenceStatus,
   persistenceError,
   lastPersistedAt,
+  workspaceBackupState,
+  onSaveWorkspaceBackup,
+  onSelectWorkspaceBackup,
 }: ProjectSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
@@ -1481,6 +1692,11 @@ function ProjectSidebar({
           error={persistenceError}
           lastPersistedAt={lastPersistedAt}
         />
+        <WorkspaceDataControls
+          workspaceBackupState={workspaceBackupState}
+          onSaveWorkspaceBackup={onSaveWorkspaceBackup}
+          onSelectWorkspaceBackup={onSelectWorkspaceBackup}
+        />
         {projects.length > 0 && (
           <button
             type="button"
@@ -1562,6 +1778,121 @@ function PersistenceStatusBadge({
   );
 }
 
+function WorkspaceDataControls({
+  workspaceBackupState,
+  onSaveWorkspaceBackup,
+  onSelectWorkspaceBackup,
+}: {
+  workspaceBackupState: WorkspaceBackupState | null;
+  onSaveWorkspaceBackup: () => void;
+  onSelectWorkspaceBackup: () => void;
+}) {
+  const isBusy = workspaceBackupState?.status === "saving" || workspaceBackupState?.status === "selecting";
+
+  return (
+    <div className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-app-bg)] p-2">
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onSaveWorkspaceBackup}
+          disabled={isBusy}
+          aria-keyshortcuts="Meta+Shift+B Control+Shift+B"
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+        >
+          <Download size={13} />
+          Backup
+        </button>
+        <button
+          type="button"
+          onClick={onSelectWorkspaceBackup}
+          disabled={isBusy}
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+        >
+          <Upload size={13} />
+          Restore
+        </button>
+      </div>
+      <WorkspaceBackupStatusMessage workspaceBackupState={workspaceBackupState} tone="sidebar" />
+    </div>
+  );
+}
+
+function WorkspaceBackupStatusMessage({
+  workspaceBackupState,
+  tone,
+}: {
+  workspaceBackupState: WorkspaceBackupState | null;
+  tone: "compact" | "sidebar";
+}) {
+  if (!workspaceBackupState) {
+    return null;
+  }
+
+  const baseClass = tone === "compact" ? "mt-3" : "mt-2";
+
+  if (workspaceBackupState.status === "saving") {
+    return (
+      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-[var(--color-accent)]")} role="status" aria-live="polite">
+        Saving workspace backup...
+      </p>
+    );
+  }
+
+  if (workspaceBackupState.status === "selecting") {
+    return (
+      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-[var(--color-accent)]")} role="status" aria-live="polite">
+        Opening backup file...
+      </p>
+    );
+  }
+
+  if (workspaceBackupState.status === "saved") {
+    return (
+      <p className={clsx(baseClass, "truncate text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
+        Backup saved.
+      </p>
+    );
+  }
+
+  if (workspaceBackupState.status === "downloaded") {
+    return (
+      <p className={clsx(baseClass, "truncate text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
+        Downloaded {workspaceBackupState.fileName}.
+      </p>
+    );
+  }
+
+  if (workspaceBackupState.status === "ready") {
+    return (
+      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-amber-700")} role="status" aria-live="polite">
+        Ready to restore {workspaceBackupState.projectCount} projects.
+      </p>
+    );
+  }
+
+  if (workspaceBackupState.status === "restored") {
+    return (
+      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
+        Restored {workspaceBackupState.projectCount} projects.
+      </p>
+    );
+  }
+
+  if (workspaceBackupState.status === "cancelled") {
+    return (
+      <p className={clsx(baseClass, "text-[11px] leading-5 text-[var(--color-muted)]")} role="status" aria-live="polite">
+        Backup action cancelled.
+      </p>
+    );
+  }
+
+  return (
+    <p className={clsx(baseClass, "text-[11px] font-semibold leading-5 text-red-700")} role="alert">
+      {workspaceBackupState.message}
+    </p>
+  );
+}
+
 function ProjectRow({
   project,
   isSelected,
@@ -1614,7 +1945,11 @@ function ProjectRow({
           aria-label={project.isPinned ? `Unpin ${project.title}` : `Pin ${project.title}`}
           title={project.isPinned ? "Unpin project" : "Pin project"}
           onClick={() => onToggleProjectPinned(project.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:opacity-0 lg:group-hover:opacity-100"
+          tabIndex={isSelected ? 0 : -1}
+          className={clsx(
+            "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:flex",
+            isSelected ? "lg:opacity-100" : "lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100",
+          )}
         >
           <Pin size={13} />
         </button>
@@ -1625,7 +1960,11 @@ function ProjectRow({
           aria-label={`Restore ${project.title}`}
           title="Restore project"
           onClick={() => onRestoreProject(project.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:opacity-0 lg:group-hover:opacity-100"
+          tabIndex={isSelected ? 0 : -1}
+          className={clsx(
+            "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:flex",
+            isSelected ? "lg:opacity-100" : "lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100",
+          )}
         >
           <ArchiveRestore size={13} />
         </button>
@@ -1635,7 +1974,11 @@ function ProjectRow({
           aria-label={`Archive ${project.title}`}
           title="Archive project"
           onClick={() => onArchiveProject(project.id)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-[var(--color-surface)] hover:text-amber-700 lg:opacity-0 lg:group-hover:opacity-100"
+          tabIndex={isSelected ? 0 : -1}
+          className={clsx(
+            "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[var(--color-surface)] hover:text-amber-700 lg:flex",
+            isSelected ? "lg:opacity-100" : "lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100",
+          )}
         >
           <Archive size={13} />
         </button>
@@ -1673,8 +2016,8 @@ function WorkspaceHeader({
   return (
     <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
       <div className="flex flex-col items-start justify-between gap-4 xl:flex-row">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+        <div className="w-full min-w-0 xl:w-auto">
+          <div className="flex min-w-0 items-center gap-2">
             <span
               className={clsx(
                 "flex h-9 w-9 items-center justify-center rounded-md text-[12px] font-bold",
@@ -1683,8 +2026,8 @@ function WorkspaceHeader({
             >
               {project.icon}
             </span>
-            <div className="min-w-0">
-              <h2 className="truncate text-[22px] font-semibold tracking-normal text-slate-950">{project.title}</h2>
+            <div className="min-w-0 flex-1">
+              <h2 className="max-w-full truncate text-[20px] font-semibold tracking-normal text-slate-950 sm:text-[22px]">{project.title}</h2>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1831,7 +2174,7 @@ function OverviewView({
         <div className="grid min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)] lg:grid-cols-[300px_minmax(0,1fr)]">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-app-bg)] lg:border-b-0 lg:border-r">
             <PanelHeader title="Project Notes" detail={`${project.title} / ${notes.length} notes`} />
-            <div className="space-y-1 p-3">
+            <div className="max-h-[440px] space-y-1 overflow-y-auto p-3">
               {notes.length === 0 ? (
                 <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-4 text-center">
                   <p className="text-[13px] font-semibold text-slate-900">No notes yet</p>
@@ -2315,18 +2658,34 @@ function ExportStatusMessage({
   );
 }
 
-function PersistenceAlert({ error }: { error: string | null }) {
+function PersistenceAlert({
+  error,
+  onRequestRepair,
+}: {
+  error: string | null;
+  onRequestRepair: () => void;
+}) {
   return (
     <div
-      className="mt-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800"
+      className="mt-4 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800 sm:flex-row sm:items-start"
       role="status"
       aria-live="polite"
     >
-      <Database size={16} className="mt-0.5 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[13px] font-semibold">FlowDesk could not save the latest changes.</p>
-        <p className="mt-1 text-[12px] leading-5">{error ?? "Keep the app open and try the action again."}</p>
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <Database size={16} className="mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold">FlowDesk could not save the latest changes.</p>
+          <p className="mt-1 text-[12px] leading-5">{error ?? "Keep the app open and try the action again."}</p>
+        </div>
       </div>
+      <button
+        type="button"
+        onClick={onRequestRepair}
+        className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md border border-red-200 bg-[var(--color-surface)] px-3 text-[12px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
+      >
+        <Database size={13} />
+        Rebuild Local Database
+      </button>
     </div>
   );
 }

@@ -6,12 +6,37 @@ export interface SelectedWorkspaceFile {
   fileType: WorkspaceFileType;
   sizeLabel: string;
   path: string;
+  sourcePath: string | null;
+  storageMode: "managed" | "linked";
 }
 
 const supportedExtensions = ["pdf", "png", "jpg", "jpeg", "csv", "txt", "md", "markdown"];
+const managedFilesDirectory = "workspace-files";
 
 function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
+}
+
+function getFileExtension(name: string): string {
+  const extension = name.split(".").pop()?.toLowerCase();
+
+  return extension && extension !== name.toLowerCase() ? extension : "file";
+}
+
+function getSafeFileStem(name: string): string {
+  const extension = getFileExtension(name);
+  const stem = name.slice(0, Math.max(0, name.length - extension.length - 1));
+  const safeStem = stem
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return safeStem || "flowdesk-file";
+}
+
+function getManagedRelativePath(name: string): string {
+  return `${managedFilesDirectory}/${getSafeFileStem(name)}-${crypto.randomUUID()}.${getFileExtension(name)}`;
 }
 
 export function getWorkspaceFileType(name: string): WorkspaceFileType {
@@ -73,6 +98,8 @@ function selectBrowserFiles(): Promise<SelectedWorkspaceFile[]> {
         fileType: getWorkspaceFileType(file.name),
         sizeLabel: formatFileSize(file.size),
         path: file.name,
+        sourcePath: null,
+        storageMode: "linked" as const,
       }));
 
       input.remove();
@@ -91,7 +118,11 @@ export async function selectWorkspaceFiles(): Promise<SelectedWorkspaceFile[]> {
     return selectBrowserFiles();
   }
 
-  const [{ open }, { stat }] = await Promise.all([import("@tauri-apps/plugin-dialog"), import("@tauri-apps/plugin-fs")]);
+  const [{ open }, { appDataDir, join }, { BaseDirectory, copyFile, mkdir, stat }] = await Promise.all([
+    import("@tauri-apps/plugin-dialog"),
+    import("@tauri-apps/api/path"),
+    import("@tauri-apps/plugin-fs"),
+  ]);
   const selectedPaths = await open({
     title: "Import FlowDesk files",
     multiple: true,
@@ -107,16 +138,28 @@ export async function selectWorkspaceFiles(): Promise<SelectedWorkspaceFile[]> {
     return [];
   }
 
+  await mkdir(managedFilesDirectory, { baseDir: BaseDirectory.AppData, recursive: true });
+  const appDataPath = await appDataDir();
+
   return Promise.all(
     selectedPaths.map(async (path) => {
       const name = getFileName(path);
-      const fileInfo = await stat(path).catch(() => null);
+      const managedRelativePath = getManagedRelativePath(name);
+
+      await copyFile(path, managedRelativePath, { toPathBaseDir: BaseDirectory.AppData });
+
+      const [managedPath, fileInfo] = await Promise.all([
+        join(appDataPath, managedRelativePath),
+        stat(managedRelativePath, { baseDir: BaseDirectory.AppData }).catch(() => null),
+      ]);
 
       return {
         name,
         fileType: getWorkspaceFileType(name),
         sizeLabel: formatFileSize(fileInfo?.size),
-        path,
+        path: managedPath,
+        sourcePath: path,
+        storageMode: "managed" as const,
       };
     }),
   );

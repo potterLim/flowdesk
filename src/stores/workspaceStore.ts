@@ -7,11 +7,16 @@ import type {
   TimelineEvent,
   WorkSession,
   WorkspaceFile,
+  WorkspaceFileStorageMode,
   WorkspaceSnapshot,
   WorkspaceView,
 } from "../domain/workspace";
 import { getElapsedMinutes } from "../lib/date";
-import { getWorkspaceRepository, type WorkspacePersistenceMode } from "../lib/persistence/workspaceRepository";
+import {
+  getWorkspaceRepository,
+  resetWorkspaceRepositoryStorage,
+  type WorkspacePersistenceMode,
+} from "../lib/persistence/workspaceRepository";
 
 export type PersistenceStatus = "hydrating" | "saving" | "saved" | "error";
 
@@ -36,6 +41,8 @@ export interface ImportWorkspaceFileInput {
   fileType: WorkspaceFile["fileType"];
   sizeLabel: string;
   path: string;
+  sourcePath: string | null;
+  storageMode: WorkspaceFileStorageMode;
   tags?: string[];
 }
 
@@ -49,6 +56,7 @@ interface WorkspaceState extends WorkspaceSnapshot {
   persistenceError: string | null;
   lastPersistedAt: string | null;
   hydrateWorkspace: () => void;
+  repairWorkspaceStorage: () => void;
   createProject: (input: CreateProjectInput) => void;
   updateProject: (projectId: string, input: UpdateProjectInput) => void;
   deleteProject: (projectId: string) => void;
@@ -72,6 +80,7 @@ interface WorkspaceState extends WorkspaceSnapshot {
   endActiveSession: () => void;
   prepareMarkdownExport: () => string | null;
   prepareJsonExport: () => string | null;
+  replaceWorkspace: (snapshot: WorkspaceSnapshot) => void;
   resetWorkspace: () => void;
 }
 
@@ -191,7 +200,7 @@ function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], se
     const duration = session.durationMinutes ?? getElapsedMinutes(session.startedAt, session.endedAt);
     return `- ${session.title}: ${duration} minutes`;
   });
-  const fileLines = files.map((file) => `- ${file.name} (${file.fileType}, ${file.sizeLabel})`);
+  const fileLines = files.map((file) => `- ${file.name} (${file.fileType}, ${file.sizeLabel}, ${file.storageMode})`);
   const noteSections = notes.map((note) => `## ${note.title}\n\n${note.content}`);
 
   return [
@@ -273,6 +282,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       })
       .catch((error: unknown) => {
         console.error("Failed to hydrate FlowDesk workspace", error);
+        set({
+          persistenceStatus: "error",
+          persistenceError: getErrorMessage(error),
+        });
+      });
+  },
+
+  repairWorkspaceStorage() {
+    set({ persistenceStatus: "saving", persistenceError: null });
+    void resetWorkspaceRepositoryStorage()
+      .then(() => get().hydrateWorkspace())
+      .catch((error: unknown) => {
+        console.error("Failed to rebuild FlowDesk workspace storage", error);
         set({
           persistenceStatus: "error",
           persistenceError: getErrorMessage(error),
@@ -679,6 +701,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       fileType: file.fileType,
       sizeLabel: file.sizeLabel,
       path: file.path,
+      sourcePath: file.sourcePath,
+      storageMode: file.storageMode,
       tags: file.tags ?? [],
       importedAt: now,
     }));
@@ -884,6 +908,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistCurrentState(set, get);
 
     return exportContent;
+  },
+
+  replaceWorkspace(snapshot) {
+    const selection = getInitialSelection(snapshot);
+
+    set({
+      ...snapshot,
+      selectedProjectId: selection.projectId,
+      selectedNoteId: selection.noteId,
+      activeView: "overview",
+      exportPreview: "",
+      persistenceError: null,
+    });
+    persistCurrentState(set, get);
   },
 
   resetWorkspace() {

@@ -6,12 +6,13 @@ import type {
   TimelineEvent,
   WorkSession,
   WorkspaceFile,
+  WorkspaceFileStorageMode,
   WorkspaceSnapshot,
 } from "../../domain/workspace";
 import { isTauriRuntime } from "../tauriRuntime";
 
 const browserStorageKey = "flowdesk.workspace.snapshot.v1";
-const workspaceSchemaVersion = 1;
+const workspaceSchemaVersion = 2;
 
 export type WorkspacePersistenceMode = "browser" | "sqlite";
 
@@ -24,9 +25,42 @@ export interface WorkspaceRepository {
 let repositoryPromise: Promise<WorkspaceRepository> | null = null;
 
 export function getWorkspaceRepository(): Promise<WorkspaceRepository> {
-  repositoryPromise ??= createWorkspaceRepository();
+  repositoryPromise ??= createWorkspaceRepository().catch((error: unknown) => {
+    repositoryPromise = null;
+    throw error;
+  });
 
   return repositoryPromise;
+}
+
+export async function resetWorkspaceRepositoryStorage(): Promise<void> {
+  repositoryPromise = null;
+
+  if (!isTauriRuntime()) {
+    window.localStorage.removeItem(browserStorageKey);
+    return;
+  }
+
+  const { BaseDirectory, exists, mkdir, rename } = await import("@tauri-apps/plugin-fs");
+  const recoveryDirectory = "database-recovery";
+  const recoveryTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+  await mkdir(recoveryDirectory, { baseDir: BaseDirectory.AppConfig, recursive: true });
+
+  await Promise.all(
+    ["flowdesk.db", "flowdesk.db-wal", "flowdesk.db-shm"].map(async (databaseFileName) => {
+      const fileExists = await exists(databaseFileName, { baseDir: BaseDirectory.AppConfig }).catch(() => false);
+
+      if (!fileExists) {
+        return;
+      }
+
+      await rename(databaseFileName, `${recoveryDirectory}/${recoveryTimestamp}-${databaseFileName}`, {
+        oldPathBaseDir: BaseDirectory.AppConfig,
+        newPathBaseDir: BaseDirectory.AppConfig,
+      });
+    }),
+  );
 }
 
 async function createWorkspaceRepository(): Promise<WorkspaceRepository> {
@@ -65,7 +99,7 @@ async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
   const databaseModule = await import("@tauri-apps/plugin-sql");
   const database = await databaseModule.default.load("sqlite:flowdesk.db");
 
-  await initializeSchema(database);
+  await initializeWorkspaceSchema(database);
 
   return {
     mode: "sqlite",
@@ -195,8 +229,8 @@ async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
         for (const file of snapshot.files) {
           await database.execute(
             `INSERT INTO files
-              (id, project_id, name, file_type, size_label, path, tags_json, imported_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              (id, project_id, name, file_type, size_label, path, source_path, storage_mode, tags_json, imported_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
               file.id,
               file.projectId,
@@ -204,6 +238,8 @@ async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
               file.fileType,
               file.sizeLabel,
               file.path,
+              file.sourcePath,
+              file.storageMode,
               JSON.stringify(file.tags),
               file.importedAt,
             ],
@@ -228,7 +264,7 @@ async function createSqliteWorkspaceRepository(): Promise<WorkspaceRepository> {
   };
 }
 
-async function initializeSchema(database: SqlDatabase): Promise<void> {
+export async function initializeWorkspaceSchema(database: SqlDatabase): Promise<void> {
   await database.execute("PRAGMA foreign_keys = ON");
   await database.execute("PRAGMA journal_mode = WAL");
   await database.execute("PRAGMA synchronous = NORMAL");
@@ -316,6 +352,8 @@ async function initializeSchema(database: SqlDatabase): Promise<void> {
         file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'png', 'jpg', 'csv', 'txt', 'markdown')),
         size_label TEXT NOT NULL,
         path TEXT NOT NULL,
+        source_path TEXT,
+        storage_mode TEXT NOT NULL DEFAULT 'linked' CHECK (storage_mode IN ('managed', 'linked')),
         tags_json TEXT NOT NULL,
         imported_at TEXT NOT NULL,
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -332,6 +370,13 @@ async function initializeSchema(database: SqlDatabase): Promise<void> {
         FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
       )`,
     );
+    await ensureColumn(database, "files", "source_path", "ALTER TABLE files ADD COLUMN source_path TEXT");
+    await ensureColumn(
+      database,
+      "files",
+      "storage_mode",
+      "ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked' CHECK (storage_mode IN ('managed', 'linked'))",
+    );
     await database.execute(`PRAGMA user_version = ${workspaceSchemaVersion}`);
     await database.execute("COMMIT");
   } catch (error) {
@@ -340,7 +385,17 @@ async function initializeSchema(database: SqlDatabase): Promise<void> {
   }
 }
 
-function normalizeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | null {
+async function ensureColumn(database: SqlDatabase, tableName: string, columnName: string, migrationSql: string): Promise<void> {
+  const columns = await database.select<TableInfoRow[]>(`PRAGMA table_info(${tableName})`);
+
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  await database.execute(migrationSql);
+}
+
+export function normalizeWorkspaceSnapshot(value: unknown): WorkspaceSnapshot | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -541,6 +596,7 @@ function normalizeFile(value: unknown): WorkspaceFile | null {
   const id = readString(value.id);
   const projectId = readString(value.projectId);
   const fileType = readString(value.fileType);
+  const storageMode = readString(value.storageMode);
 
   if (!id || !projectId) {
     return null;
@@ -556,6 +612,8 @@ function normalizeFile(value: unknown): WorkspaceFile | null {
         : "pdf",
     sizeLabel: readString(value.sizeLabel),
     path: readString(value.path),
+    sourcePath: readNullableString(value.sourcePath),
+    storageMode: storageMode === "managed" ? "managed" : "linked",
     tags: readStringArray(value.tags),
     importedAt: readString(value.importedAt, new Date().toISOString()),
   };
@@ -676,6 +734,8 @@ function mapFileRow(row: FileRow): WorkspaceFile {
     fileType: row.file_type as WorkspaceFile["fileType"],
     sizeLabel: row.size_label,
     path: row.path,
+    sourcePath: row.source_path,
+    storageMode: readStorageMode(row.storage_mode),
     tags: parseJsonArray(row.tags_json),
     importedAt: row.imported_at,
   };
@@ -692,13 +752,21 @@ function mapTimelineEventRow(row: TimelineEventRow): TimelineEvent {
   };
 }
 
-interface SqlDatabase {
+function readStorageMode(value: string): WorkspaceFileStorageMode {
+  return value === "managed" ? "managed" : "linked";
+}
+
+export interface SqlDatabase {
   execute: (query: string, bindValues?: unknown[]) => Promise<unknown>;
   select: <T>(query: string, bindValues?: unknown[]) => Promise<T>;
 }
 
 interface SchemaVersionRow {
   user_version: number;
+}
+
+interface TableInfoRow {
+  name: string;
 }
 
 interface ProjectRow {
@@ -765,6 +833,8 @@ interface FileRow {
   file_type: string;
   size_label: string;
   path: string;
+  source_path: string | null;
+  storage_mode: string;
   tags_json: string;
   imported_at: string;
 }

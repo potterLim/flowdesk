@@ -86,6 +86,10 @@ export function CommandPalette({
     setActiveIndex(0);
   }, [query]);
 
+  useEffect(() => {
+    setActiveIndex((index) => Math.min(index, Math.max(filteredCommands.length - 1, 0)));
+  }, [filteredCommands.length]);
+
   if (!isOpen) {
     return null;
   }
@@ -130,6 +134,9 @@ export function CommandPalette({
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
             aria-label="Search commands"
+            role="combobox"
+            aria-expanded="true"
+            aria-autocomplete="list"
             aria-controls="flowdesk-command-results"
             aria-activedescendant={activeCommand ? `flowdesk-command-${activeCommand.id}` : undefined}
             className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-[var(--color-ink)] outline-none placeholder:text-slate-400"

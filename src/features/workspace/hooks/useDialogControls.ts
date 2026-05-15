@@ -9,7 +9,10 @@ function useRestoreFocus(isOpen: boolean): void {
     }
 
     const rememberFocusedElement = () => {
-      if (document.activeElement instanceof HTMLElement && document.activeElement.closest('[role="dialog"]') === null) {
+      if (
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement.closest('[role="dialog"], [role="alertdialog"]') === null
+      ) {
         previousFocusRef.current = document.activeElement;
       }
     };

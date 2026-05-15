@@ -4,12 +4,14 @@ use tauri::{
 };
 
 const FLOWDESK_MENU_EVENT: &str = "flowdesk://menu";
-const APP_MENU_COMMANDS: [&str; 7] = [
+const APP_MENU_COMMANDS: [&str; 9] = [
     "new_project",
     "new_note",
     "new_task",
     "import_files",
     "export_markdown",
+    "save_workspace_backup",
+    "restore_workspace_backup",
     "open_command_palette",
     "search_projects",
 ];
@@ -45,6 +47,20 @@ fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         Some("CmdOrCtrl+E"),
     )?;
+    let save_workspace_backup = MenuItem::with_id(
+        app,
+        "save_workspace_backup",
+        "Back Up Workspace...",
+        true,
+        Some("CmdOrCtrl+Shift+B"),
+    )?;
+    let restore_workspace_backup = MenuItem::with_id(
+        app,
+        "restore_workspace_backup",
+        "Restore Backup...",
+        true,
+        None::<&str>,
+    )?;
     let open_command_palette = MenuItem::with_id(
         app,
         "open_command_palette",
@@ -77,6 +93,9 @@ fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<Wry>> {
         .separator()
         .item(&import_files)
         .item(&export_markdown)
+        .separator()
+        .item(&save_workspace_backup)
+        .item(&restore_workspace_backup)
         .separator()
         .close_window()
         .build()?;
