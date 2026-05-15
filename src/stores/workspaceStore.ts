@@ -17,6 +17,11 @@ import {
   resetWorkspaceRepositoryStorage,
   type WorkspacePersistenceMode,
 } from "../lib/persistence/workspaceRepository";
+import {
+  buildProjectRecordJson,
+  buildProjectRecordMarkdown,
+  getProjectRecordSnapshot,
+} from "../lib/projectRecordExport";
 
 export type PersistenceStatus = "hydrating" | "saving" | "saved" | "error";
 
@@ -218,35 +223,6 @@ function createTimelineEvent(projectId: string, title: string, description: stri
     type,
     createdAt: new Date().toISOString(),
   };
-}
-
-function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], sessions: WorkSession[], files: WorkspaceFile[]): string {
-  const taskLines = tasks.map((task) => `- [${task.status === "done" ? "x" : " "}] ${task.title} (${task.priority})`);
-  const sessionLines = sessions.map((session) => {
-    const duration = session.durationMinutes ?? getElapsedMinutes(session.startedAt, session.endedAt);
-    return `- ${session.title}: ${duration} minutes`;
-  });
-  const fileLines = files.map((file) => `- ${file.name} (${file.fileType}, ${file.sizeLabel}, ${file.storageMode})`);
-  const noteSections = notes.map((note) => `## ${note.title}\n\n${note.content}`);
-
-  return [
-    `# ${project.title}`,
-    project.description,
-    "",
-    `Tags: ${project.tags.join(", ")}`,
-    "",
-    "## Tasks",
-    taskLines.join("\n") || "No tasks recorded.",
-    "",
-    "## Sessions",
-    sessionLines.join("\n") || "No sessions recorded.",
-    "",
-    "## Files",
-    fileLines.join("\n") || "No files imported.",
-    "",
-    "# Notes",
-    noteSections.join("\n\n---\n\n"),
-  ].join("\n");
 }
 
 const initialSnapshot = createInitialState();
@@ -884,11 +860,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return null;
     }
 
-    const projectNotes = state.notes.filter((note) => note.projectId === project.id);
-    const projectTasks = state.tasks.filter((task) => task.projectId === project.id);
-    const projectSessions = state.sessions.filter((session) => session.projectId === project.id);
-    const projectFiles = state.files.filter((file) => file.projectId === project.id);
-    const exportContent = buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions, projectFiles);
+    const projectRecord = getProjectRecordSnapshot(getSnapshotFromState(state), project.id);
+
+    if (!projectRecord) {
+      return null;
+    }
+
+    const exportContent = buildProjectRecordMarkdown(projectRecord);
 
     set({
       exportPreview: exportContent,
@@ -912,16 +890,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return null;
     }
 
-    const projectSnapshot = {
-      project,
-      notes: state.notes.filter((note) => note.projectId === projectId),
-      tasks: state.tasks.filter((task) => task.projectId === projectId),
-      sessions: state.sessions.filter((session) => session.projectId === projectId),
-      references: state.references.filter((reference) => reference.projectId === projectId),
-      files: state.files.filter((file) => file.projectId === projectId),
-      timelineEvents: state.timelineEvents.filter((event) => event.projectId === projectId),
-    };
-    const exportContent = JSON.stringify(projectSnapshot, null, 2);
+    const projectRecord = getProjectRecordSnapshot(getSnapshotFromState(state), projectId);
+
+    if (!projectRecord) {
+      return null;
+    }
+
+    const exportContent = buildProjectRecordJson(projectRecord);
 
     set({
       exportPreview: exportContent,
