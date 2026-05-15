@@ -8,6 +8,7 @@ import {
   Clock3,
   Database,
   Download,
+  FileText,
   ListChecks,
   Monitor,
   Moon,
@@ -23,15 +24,16 @@ import {
   Tags,
   Timer,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { clsx } from "clsx";
 import type { FormEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import type { Project, Task, TaskPriority, TaskStatus, TimelineEvent, WorkspaceView } from "../../domain/workspace";
+import type { Project, Task, TaskPriority, TaskStatus, TimelineEvent, WorkspaceFile, WorkspaceView } from "../../domain/workspace";
 import { formatDateTime, formatDuration, formatShortDate, getElapsedMinutes } from "../../lib/date";
 import {
   revealSavedProjectRecord,
@@ -39,6 +41,7 @@ import {
   type ExportFormat,
 } from "../../lib/exportProjectRecord";
 import type { WorkspacePersistenceMode } from "../../lib/persistence/workspaceRepository";
+import { openWorkspaceFile, revealWorkspaceFile, selectWorkspaceFiles } from "../../lib/workspaceFiles";
 import {
   useWorkspaceStore,
   type CreateProjectInput,
@@ -46,193 +49,28 @@ import {
   type PersistenceStatus,
   type UpdateProjectInput,
 } from "../../stores/workspaceStore";
+import { CommandPalette, type CommandPaletteItem } from "./components/CommandPalette";
+import { ActionButton, EmptyState, IconButton, PanelHeader } from "./components/WorkspacePrimitives";
+import { useDialogControls } from "./hooks/useDialogControls";
+import { useNativeMenuEvents, type NativeWorkspaceMenuCommand } from "./hooks/useNativeMenuEvents";
+import { useWorkspaceTheme } from "./hooks/useWorkspaceTheme";
+import { FilesView } from "./views/FilesView";
+import { accentClasses, priorityClasses, taskStatusLabels, viewItems } from "./workspaceConstants";
+import {
+  formatAriaShortcut,
+  formatExportFormat,
+  getErrorMessage,
+  getStoredThemeMode,
+  isTextEntryTarget,
+  parseTags,
+} from "./workspaceUtils";
+import type { ExportSaveState, ThemeMode } from "./workspaceTypes";
 
 const MarkdownEditor = lazy(() =>
   import("../../components/MarkdownEditor").then((module) => ({
     default: module.MarkdownEditor,
   })),
 );
-
-const viewItems: Array<{ id: WorkspaceView; label: string; icon: LucideIcon }> = [
-  { id: "overview", label: "Overview", icon: PanelLeft },
-  { id: "notes", label: "Notes", icon: NotebookText },
-  { id: "tasks", label: "Tasks", icon: CheckSquare },
-  { id: "sessions", label: "Sessions", icon: Timer },
-  { id: "timeline", label: "Timeline", icon: Clock3 },
-  { id: "exports", label: "Exports", icon: Download },
-];
-
-const accentClasses: Record<Project["accent"], string> = {
-  teal: "bg-teal-700 text-white",
-  blue: "bg-blue-700 text-white",
-  violet: "bg-violet-700 text-white",
-  amber: "bg-amber-600 text-white",
-  rose: "bg-rose-700 text-white",
-};
-
-const taskStatusLabels: Record<TaskStatus, string> = {
-  todo: "Todo",
-  in_progress: "In Progress",
-  done: "Done",
-  archived: "Archived",
-};
-
-const priorityClasses: Record<TaskPriority, string> = {
-  low: "border-slate-200 bg-slate-50 text-slate-600",
-  medium: "border-blue-200 bg-blue-50 text-blue-700",
-  high: "border-amber-200 bg-amber-50 text-amber-700",
-  urgent: "border-red-200 bg-red-50 text-red-700",
-};
-
-type ThemeMode = "system" | "light" | "dark";
-
-type ExportSaveState =
-  | { status: "saving"; format: ExportFormat }
-  | { status: "saved"; format: ExportFormat; path: string }
-  | { status: "downloaded"; format: ExportFormat; fileName: string }
-  | { status: "cancelled"; format: ExportFormat }
-  | { status: "error"; format: ExportFormat; message: string };
-
-function getStoredThemeMode(): ThemeMode {
-  const storedThemeMode = window.localStorage.getItem("flowdesk.themeMode");
-
-  if (storedThemeMode === "system" || storedThemeMode === "light" || storedThemeMode === "dark") {
-    return storedThemeMode;
-  }
-
-  const legacyTheme = window.localStorage.getItem("flowdesk.theme");
-
-  return legacyTheme === "light" || legacyTheme === "dark" ? legacyTheme : "system";
-}
-
-function resolveThemeMode(themeMode: ThemeMode): "light" | "dark" {
-  if (themeMode !== "system") {
-    return themeMode;
-  }
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "The operation could not be completed.";
-}
-
-function formatExportFormat(format: ExportFormat): string {
-  return format === "markdown" ? "Markdown" : "JSON";
-}
-
-function formatAriaShortcut(shortcut: string): string {
-  if (!shortcut.startsWith("Command/Ctrl+")) {
-    return shortcut;
-  }
-
-  const key = shortcut.replace("Command/Ctrl+", "");
-
-  return `Meta+${key} Control+${key}`;
-}
-
-function isTextEntryTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target.isContentEditable ||
-    target.closest(".cm-editor") !== null
-  );
-}
-
-function useRestoreFocus(isOpen: boolean): void {
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      return undefined;
-    }
-
-    const rememberFocusedElement = () => {
-      if (document.activeElement instanceof HTMLElement && document.activeElement.closest('[role="dialog"]') === null) {
-        previousFocusRef.current = document.activeElement;
-      }
-    };
-
-    rememberFocusedElement();
-    document.addEventListener("focusin", rememberFocusedElement);
-
-    return () => document.removeEventListener("focusin", rememberFocusedElement);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    return () => {
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    };
-  }, [isOpen]);
-}
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((element) => element.offsetParent !== null || element === document.activeElement);
-}
-
-function useDialogControls<T extends HTMLElement>(isOpen: boolean, onClose: () => void) {
-  const dialogRef = useRef<T | null>(null);
-
-  useRestoreFocus(isOpen);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab" || !dialogRef.current) {
-        return;
-      }
-
-      const focusableElements = getFocusableElements(dialogRef.current);
-
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        return;
-      }
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey && document.activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      }
-
-      if (!event.shiftKey && document.activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
-  return dialogRef;
-}
 
 export function WorkspaceScreen() {
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
@@ -242,11 +80,14 @@ export function WorkspaceScreen() {
   const [pendingNoteDeleteId, setPendingNoteDeleteId] = useState<string | null>(null);
   const [pendingTaskDeleteId, setPendingTaskDeleteId] = useState<string | null>(null);
   const [exportSaveState, setExportSaveState] = useState<ExportSaveState | null>(null);
+  const [fileActionError, setFileActionError] = useState<string | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
   const projects = useWorkspaceStore((state) => state.projects);
   const notes = useWorkspaceStore((state) => state.notes);
   const tasks = useWorkspaceStore((state) => state.tasks);
   const sessions = useWorkspaceStore((state) => state.sessions);
+  const files = useWorkspaceStore((state) => state.files);
   const timelineEvents = useWorkspaceStore((state) => state.timelineEvents);
   const selectedProjectId = useWorkspaceStore((state) => state.selectedProjectId);
   const selectedNoteId = useWorkspaceStore((state) => state.selectedNoteId);
@@ -272,6 +113,8 @@ export function WorkspaceScreen() {
   const deleteNote = useWorkspaceStore((state) => state.deleteNote);
   const updateTaskStatus = useWorkspaceStore((state) => state.updateTaskStatus);
   const deleteTask = useWorkspaceStore((state) => state.deleteTask);
+  const importWorkspaceFiles = useWorkspaceStore((state) => state.importFiles);
+  const deleteFile = useWorkspaceStore((state) => state.deleteFile);
   const startSession = useWorkspaceStore((state) => state.startSession);
   const updateActiveSessionNotes = useWorkspaceStore((state) => state.updateActiveSessionNotes);
   const endActiveSession = useWorkspaceStore((state) => state.endActiveSession);
@@ -283,6 +126,7 @@ export function WorkspaceScreen() {
   const selectedNote = selectedProject ? notes.find((note) => note.id === selectedNoteId) ?? projectNotes[0] : undefined;
   const projectTasks = selectedProject ? tasks.filter((task) => task.projectId === selectedProject.id) : [];
   const projectSessions = selectedProject ? sessions.filter((session) => session.projectId === selectedProject.id) : [];
+  const projectFiles = selectedProject ? files.filter((file) => file.projectId === selectedProject.id) : [];
   const projectTimelineEvents = selectedProject ? timelineEvents.filter((event) => event.projectId === selectedProject.id) : [];
   const activeSession = projectSessions.find((session) => session.endedAt === null);
   const canEditProject = selectedProject?.status === "active";
@@ -297,6 +141,42 @@ export function WorkspaceScreen() {
   const handleCreateTask = (input: CreateTaskInput) => {
     createTask(input);
     closeCreateTaskDialog();
+  };
+
+  const handleImportFiles = async () => {
+    if (!selectedProject || !canEditProject) {
+      return;
+    }
+
+    setFileActionError(null);
+
+    try {
+      const selectedFiles = await selectWorkspaceFiles();
+      importWorkspaceFiles(selectedFiles);
+    } catch (error: unknown) {
+      setFileActionError(getErrorMessage(error));
+      setActiveView("files");
+    }
+  };
+
+  const handleOpenFile = async (path: string) => {
+    setFileActionError(null);
+
+    try {
+      await openWorkspaceFile(path);
+    } catch (error: unknown) {
+      setFileActionError(getErrorMessage(error));
+    }
+  };
+
+  const handleRevealFile = async (path: string) => {
+    setFileActionError(null);
+
+    try {
+      await revealWorkspaceFile(path);
+    } catch (error: unknown) {
+      setFileActionError(getErrorMessage(error));
+    }
   };
 
   const handlePrepareMarkdownExport = () => {
@@ -407,27 +287,144 @@ export function WorkspaceScreen() {
     setPendingTaskDeleteId(null);
   };
 
-  useEffect(() => {
-    const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const applyTheme = () => {
-      document.documentElement.dataset.theme = resolveThemeMode(themeMode);
-      document.documentElement.dataset.themeMode = themeMode;
-      window.localStorage.setItem("flowdesk.themeMode", themeMode);
-    };
+  useWorkspaceTheme(themeMode);
 
-    applyTheme();
-    window.localStorage.removeItem("flowdesk.theme");
+  const handleNativeMenuCommand = useCallback(
+    (command: NativeWorkspaceMenuCommand) => {
+      if (command === "new_project") {
+        setIsCreateProjectDialogOpen(true);
+        return;
+      }
 
-    if (typeof colorSchemeQuery.addEventListener === "function") {
-      colorSchemeQuery.addEventListener("change", applyTheme);
+      if (command === "new_note" && selectedProject && canEditProject) {
+        createNote();
+        return;
+      }
 
-      return () => colorSchemeQuery.removeEventListener("change", applyTheme);
-    }
+      if (command === "new_task" && selectedProject && canEditProject) {
+        openCreateTaskDialog();
+        return;
+      }
 
-    colorSchemeQuery.addListener(applyTheme);
+      if (command === "import_files" && selectedProject && canEditProject) {
+        void handleImportFiles();
+        return;
+      }
 
-    return () => colorSchemeQuery.removeListener(applyTheme);
-  }, [themeMode]);
+      if (command === "export_markdown" && selectedProject) {
+        void handlePrepareMarkdownExport();
+        return;
+      }
+
+      if (command === "open_command_palette") {
+        setIsCommandPaletteOpen(true);
+        return;
+      }
+
+      if (command === "search_projects") {
+        document.getElementById("flowdesk-project-search")?.focus();
+      }
+    },
+    [canEditProject, createNote, handleImportFiles, handlePrepareMarkdownExport, openCreateTaskDialog, selectedProject],
+  );
+
+  useNativeMenuEvents(handleNativeMenuCommand);
+
+  const commandPaletteItems = useMemo<CommandPaletteItem[]>(
+    () => [
+      {
+        id: "new-project",
+        label: "New Project",
+        detail: "Create a new workspace project",
+        shortcut: "Command/Ctrl+Shift+N",
+        icon: Plus,
+        onSelect: openCreateProjectDialog,
+      },
+      {
+        id: "new-note",
+        label: "New Note",
+        detail: selectedProject ? selectedProject.title : "Select a project first",
+        shortcut: "Command/Ctrl+N",
+        icon: NotebookText,
+        isDisabled: !selectedProject || !canEditProject,
+        onSelect: createNote,
+      },
+      {
+        id: "new-task",
+        label: "New Task",
+        detail: selectedProject ? selectedProject.title : "Select a project first",
+        shortcut: "Command/Ctrl+Shift+T",
+        icon: ListChecks,
+        isDisabled: !selectedProject || !canEditProject,
+        onSelect: openCreateTaskDialog,
+      },
+      {
+        id: "import-files",
+        label: "Import Files",
+        detail: selectedProject ? selectedProject.title : "Select a project first",
+        shortcut: "Command/Ctrl+Shift+I",
+        icon: Upload,
+        isDisabled: !selectedProject || !canEditProject,
+        onSelect: handleImportFiles,
+      },
+      {
+        id: "toggle-session",
+        label: activeSession ? "End Session" : "Start Session",
+        detail: selectedProject ? "Track actual work time" : "Select a project first",
+        shortcut: "Command/Ctrl+Enter",
+        icon: activeSession ? Square : Play,
+        isDisabled: !selectedProject || !canEditProject,
+        onSelect: activeSession ? endActiveSession : startSession,
+      },
+      {
+        id: "export-markdown",
+        label: "Export Markdown",
+        detail: selectedProject ? "Prepare a portable project record" : "Select a project first",
+        shortcut: "Command/Ctrl+E",
+        icon: Download,
+        isDisabled: !selectedProject,
+        onSelect: handlePrepareMarkdownExport,
+      },
+      {
+        id: "project-settings",
+        label: "Project Settings",
+        detail: selectedProject ? selectedProject.title : "Select a project first",
+        icon: Settings2,
+        isDisabled: !selectedProject,
+        onSelect: () => setIsProjectSettingsOpen(true),
+      },
+      {
+        id: "search-projects",
+        label: "Search Projects",
+        detail: "Focus the project list search",
+        shortcut: "Command/Ctrl+K",
+        icon: Search,
+        onSelect: () => document.getElementById("flowdesk-project-search")?.focus(),
+      },
+      ...viewItems.map((item, index) => ({
+        id: `view-${item.id}`,
+        label: item.label,
+        detail: selectedProject ? `Open ${item.label} view` : "Select a project first",
+        shortcut: `Command/Ctrl+${index + 1}`,
+        icon: item.icon,
+        isDisabled: !selectedProject,
+        onSelect: () => setActiveView(item.id),
+      })),
+    ],
+    [
+      activeSession,
+      canEditProject,
+      createNote,
+      endActiveSession,
+      handleImportFiles,
+      handlePrepareMarkdownExport,
+      openCreateProjectDialog,
+      openCreateTaskDialog,
+      selectedProject,
+      setActiveView,
+      startSession,
+    ],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -438,6 +435,12 @@ export function WorkspaceScreen() {
       }
 
       const key = event.key.toLowerCase();
+
+      if (key === "p" && event.shiftKey) {
+        event.preventDefault();
+        setIsCommandPaletteOpen(true);
+        return;
+      }
 
       if (key === "k") {
         event.preventDefault();
@@ -469,6 +472,18 @@ export function WorkspaceScreen() {
         return;
       }
 
+      if (key === "t" && event.shiftKey && selectedProject && canEditProject) {
+        event.preventDefault();
+        openCreateTaskDialog();
+        return;
+      }
+
+      if (key === "i" && event.shiftKey && selectedProject && canEditProject) {
+        event.preventDefault();
+        void handleImportFiles();
+        return;
+      }
+
       if (key === "e" && selectedProject) {
         event.preventDefault();
         handlePrepareMarkdownExport();
@@ -495,7 +510,9 @@ export function WorkspaceScreen() {
     canEditProject,
     createNote,
     endActiveSession,
+    handleImportFiles,
     handlePrepareMarkdownExport,
+    openCreateTaskDialog,
     selectedProject,
     setActiveView,
     startSession,
@@ -547,6 +564,7 @@ export function WorkspaceScreen() {
                   notes={projectNotes}
                   tasks={projectTasks}
                   sessions={projectSessions}
+                  files={projectFiles}
                   timelineEvents={projectTimelineEvents}
                   selectedNote={selectedNote}
                   canEditProject={canEditProject}
@@ -589,6 +607,17 @@ export function WorkspaceScreen() {
                   onStartSession={startSession}
                   onUpdateActiveSessionNotes={updateActiveSessionNotes}
                   onEndSession={endActiveSession}
+                />
+              )}
+              {activeView === "files" && (
+                <FilesView
+                  files={projectFiles}
+                  canEditProject={canEditProject}
+                  fileActionError={fileActionError}
+                  onImportFiles={handleImportFiles}
+                  onOpenFile={handleOpenFile}
+                  onRevealFile={handleRevealFile}
+                  onDeleteFile={deleteFile}
                 />
               )}
               {activeView === "timeline" && <TimelineView timelineEvents={projectTimelineEvents} />}
@@ -642,6 +671,11 @@ export function WorkspaceScreen() {
         confirmLabel="Delete Task"
         onCancel={() => setPendingTaskDeleteId(null)}
         onConfirm={handleConfirmTaskDelete}
+      />
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        commands={commandPaletteItems}
+        onClose={() => setIsCommandPaletteOpen(false)}
       />
     </div>
   );
@@ -787,13 +821,6 @@ function FirstRunView({ onCreateProject }: { onCreateProject: (input: CreateProj
       </div>
     </section>
   );
-}
-
-function parseTags(value: string): string[] {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
 }
 
 function ProjectTextField({
@@ -1719,7 +1746,10 @@ function WorkspaceHeader({
 
 function ViewTabs({ activeView, onSelectView }: { activeView: WorkspaceView; onSelectView: (view: WorkspaceView) => void }) {
   return (
-    <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:px-5">
+    <nav
+      aria-label="Workspace views"
+      className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:px-5"
+    >
       {viewItems.map((item, index) => {
         const Icon = item.icon;
         const shortcut = `Command/Ctrl+${index + 1}`;
@@ -1754,6 +1784,7 @@ function OverviewView({
   notes,
   tasks,
   sessions,
+  files,
   timelineEvents,
   selectedNote,
   canEditProject,
@@ -1770,6 +1801,7 @@ function OverviewView({
   notes: ReturnType<typeof useWorkspaceStore.getState>["notes"];
   tasks: Task[];
   sessions: ReturnType<typeof useWorkspaceStore.getState>["sessions"];
+  files: WorkspaceFile[];
   timelineEvents: TimelineEvent[];
   selectedNote: ReturnType<typeof useWorkspaceStore.getState>["notes"][number] | undefined;
   canEditProject: boolean;
@@ -1788,10 +1820,11 @@ function OverviewView({
   return (
     <div className="grid h-auto min-h-0 grid-cols-1 gap-5 pt-5 xl:h-full xl:grid-cols-[minmax(0,1fr)_330px]">
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <MetricPanel label="Notes" value={notes.length.toString()} detail="Markdown records" icon={NotebookText} />
           <MetricPanel label="Tasks" value={`${completedTaskCount}/${tasks.length}`} detail="Completed" icon={CheckSquare} />
           <MetricPanel label="Sessions" value={sessions.length.toString()} detail="Tracked blocks" icon={Timer} />
+          <MetricPanel label="Files" value={files.length.toString()} detail="Local assets" icon={FileText} />
           <MetricPanel label="Timeline" value={timelineEvents.length.toString()} detail="Project events" icon={Clock3} />
         </div>
 
@@ -2536,106 +2569,6 @@ function MarkdownReadingSurface({ content }: { content: string }) {
   return (
     <div className="flowdesk-markdown max-w-none">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-    </div>
-  );
-}
-
-function PanelHeader({ title, detail }: { title: string; detail: string }) {
-  return (
-    <div className="flex h-14 items-center justify-between border-b border-[var(--color-border)] px-4">
-      <div className="min-w-0">
-        <h3 className="truncate text-[14px] font-semibold text-slate-950">{title}</h3>
-        <p className="mt-0.5 truncate text-[12px] text-[var(--color-muted)]">{detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function ActionButton({
-  icon: Icon,
-  label,
-  shortcut,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  shortcut?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-keyshortcuts={shortcut ? formatAriaShortcut(shortcut) : undefined}
-      title={shortcut ? `${label} (${shortcut})` : label}
-      onClick={onClick}
-      className="inline-flex h-9 w-10 shrink-0 items-center justify-center gap-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-0 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-[var(--color-surface-subtle)] sm:w-auto sm:gap-2 sm:px-3"
-    >
-      <Icon size={14} />
-      <span className="hidden sm:inline">{label}</span>
-    </button>
-  );
-}
-
-function IconButton({
-  icon: Icon,
-  label,
-  isActive,
-  size = "sm",
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  isActive?: boolean;
-  size?: "sm" | "md";
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={typeof isActive === "boolean" ? isActive : undefined}
-      title={label}
-      onClick={onClick}
-      className={clsx(
-        "flex items-center justify-center rounded-md border transition",
-        size === "md" ? "h-9 w-9 shrink-0" : "h-8 w-8",
-        isActive
-          ? "border-[var(--color-accent)] bg-[var(--color-selection)] text-[var(--color-accent)]"
-          : "border-[var(--color-border)] bg-[var(--color-surface)] text-slate-600 hover:bg-[var(--color-surface-subtle)] hover:text-slate-950",
-      )}
-    >
-      <Icon size={14} />
-    </button>
-  );
-}
-
-function EmptyState({
-  title,
-  detail,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  detail: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className="flex h-full min-h-[240px] flex-col items-center justify-center text-center">
-      <NotebookText size={26} className="text-slate-400" />
-      <p className="mt-3 text-[14px] font-semibold text-slate-950">{title}</p>
-      <p className="mt-1 max-w-sm text-[13px] leading-6 text-[var(--color-muted)]">{detail}</p>
-      {actionLabel && onAction && (
-        <button
-          type="button"
-          onClick={onAction}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 text-[13px] font-semibold whitespace-nowrap text-white"
-        >
-          <Plus size={14} />
-          {actionLabel}
-        </button>
-      )}
     </div>
   );
 }

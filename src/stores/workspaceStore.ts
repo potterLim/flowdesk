@@ -6,6 +6,7 @@ import type {
   TaskStatus,
   TimelineEvent,
   WorkSession,
+  WorkspaceFile,
   WorkspaceSnapshot,
   WorkspaceView,
 } from "../domain/workspace";
@@ -28,6 +29,14 @@ export interface CreateTaskInput {
   priority: Task["priority"];
   dueDate: string | null;
   tags: string[];
+}
+
+export interface ImportWorkspaceFileInput {
+  name: string;
+  fileType: WorkspaceFile["fileType"];
+  sizeLabel: string;
+  path: string;
+  tags?: string[];
 }
 
 interface WorkspaceState extends WorkspaceSnapshot {
@@ -56,6 +65,8 @@ interface WorkspaceState extends WorkspaceSnapshot {
   createTask: (input: CreateTaskInput) => void;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   deleteTask: (taskId: string) => void;
+  importFiles: (files: ImportWorkspaceFileInput[]) => void;
+  deleteFile: (fileId: string) => void;
   startSession: () => void;
   updateActiveSessionNotes: (notes: string) => void;
   endActiveSession: () => void;
@@ -174,12 +185,13 @@ function createTimelineEvent(projectId: string, title: string, description: stri
   };
 }
 
-function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], sessions: WorkSession[]): string {
+function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], sessions: WorkSession[], files: WorkspaceFile[]): string {
   const taskLines = tasks.map((task) => `- [${task.status === "done" ? "x" : " "}] ${task.title} (${task.priority})`);
   const sessionLines = sessions.map((session) => {
     const duration = session.durationMinutes ?? getElapsedMinutes(session.startedAt, session.endedAt);
     return `- ${session.title}: ${duration} minutes`;
   });
+  const fileLines = files.map((file) => `- ${file.name} (${file.fileType}, ${file.sizeLabel})`);
   const noteSections = notes.map((note) => `## ${note.title}\n\n${note.content}`);
 
   return [
@@ -193,6 +205,9 @@ function buildProjectMarkdown(project: Project, notes: Note[], tasks: Task[], se
     "",
     "## Sessions",
     sessionLines.join("\n") || "No sessions recorded.",
+    "",
+    "## Files",
+    fileLines.join("\n") || "No files imported.",
     "",
     "# Notes",
     noteSections.join("\n\n---\n\n"),
@@ -645,6 +660,67 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistCurrentState(set, get);
   },
 
+  importFiles(files) {
+    const state = get();
+
+    if (!state.selectedProjectId || files.length === 0) {
+      return;
+    }
+
+    if (!isProjectEditable(state, state.selectedProjectId)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const importedFiles: WorkspaceFile[] = files.map((file) => ({
+      id: createId("file"),
+      projectId: state.selectedProjectId,
+      name: file.name.trim() || "Untitled file",
+      fileType: file.fileType,
+      sizeLabel: file.sizeLabel,
+      path: file.path,
+      tags: file.tags ?? [],
+      importedAt: now,
+    }));
+
+    set({
+      files: [...importedFiles, ...state.files],
+      activeView: "files",
+      timelineEvents: [
+        createTimelineEvent(
+          state.selectedProjectId,
+          importedFiles.length === 1 ? "File imported" : "Files imported",
+          importedFiles.length === 1
+            ? `Imported ${importedFiles[0].name}.`
+            : `Imported ${importedFiles.length} files.`,
+          "file_imported",
+        ),
+        ...state.timelineEvents,
+      ],
+      projects: updateProjectTimestamp(state.projects, state.selectedProjectId, now),
+      exportPreview: "",
+    });
+    persistCurrentState(set, get);
+  },
+
+  deleteFile(fileId) {
+    const state = get();
+    const file = state.files.find((candidateFile) => candidateFile.id === fileId);
+
+    if (!file || !isProjectEditable(state, file.projectId)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    set({
+      files: state.files.filter((candidateFile) => candidateFile.id !== fileId),
+      projects: updateProjectTimestamp(state.projects, file.projectId, now),
+      exportPreview: "",
+    });
+    persistCurrentState(set, get);
+  },
+
   startSession() {
     const state = get();
 
@@ -761,7 +837,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const projectNotes = state.notes.filter((note) => note.projectId === project.id);
     const projectTasks = state.tasks.filter((task) => task.projectId === project.id);
     const projectSessions = state.sessions.filter((session) => session.projectId === project.id);
-    const exportContent = buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions);
+    const projectFiles = state.files.filter((file) => file.projectId === project.id);
+    const exportContent = buildProjectMarkdown(project, projectNotes, projectTasks, projectSessions, projectFiles);
 
     set({
       exportPreview: exportContent,
@@ -790,6 +867,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       notes: state.notes.filter((note) => note.projectId === projectId),
       tasks: state.tasks.filter((task) => task.projectId === projectId),
       sessions: state.sessions.filter((session) => session.projectId === projectId),
+      references: state.references.filter((reference) => reference.projectId === projectId),
+      files: state.files.filter((file) => file.projectId === projectId),
       timelineEvents: state.timelineEvents.filter((event) => event.projectId === projectId),
     };
     const exportContent = JSON.stringify(projectSnapshot, null, 2);

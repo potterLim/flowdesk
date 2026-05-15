@@ -1,3 +1,5 @@
+import { isTauriRuntime } from "./tauriRuntime";
+
 export type ExportFormat = "markdown" | "json";
 
 export type ExportSaveResult =
@@ -9,10 +11,6 @@ interface SaveProjectRecordInput {
   projectTitle: string;
   format: ExportFormat;
   content: string;
-}
-
-function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 function getExportExtension(format: ExportFormat): "md" | "json" {
