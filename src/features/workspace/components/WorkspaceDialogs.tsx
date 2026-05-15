@@ -72,6 +72,7 @@ export function CreateProjectDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-project-title"
+        aria-describedby="create-project-description"
         className="w-full max-w-[560px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
@@ -79,7 +80,9 @@ export function CreateProjectDialog({
             <h2 id="create-project-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
               New Project
             </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Set the anchor for a focused workspace record.</p>
+            <p id="create-project-description" className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+              Create the anchor for a workspace record.
+            </p>
           </div>
           <button
             type="button"
@@ -178,6 +181,7 @@ export function CreateTaskDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-task-title"
+        aria-describedby="create-task-description"
         className="w-full max-w-[520px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
@@ -185,7 +189,9 @@ export function CreateTaskDialog({
             <h2 id="create-task-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
               New Task
             </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Add one concrete next step.</p>
+            <p id="create-task-description" className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+              Add one concrete next step.
+            </p>
           </div>
           <button
             type="button"
@@ -313,6 +319,7 @@ export function ProjectSettingsDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-settings-title"
+        aria-describedby="project-settings-description"
         className="w-full max-w-[600px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
@@ -320,7 +327,7 @@ export function ProjectSettingsDialog({
             <h2 id="project-settings-title" className="text-[16px] font-semibold text-[var(--color-ink)]">
               Project Settings
             </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+            <p id="project-settings-description" className="mt-0.5 text-[12px] text-[var(--color-muted)]">
               {project.status === "archived" ? "Read-only archived project" : "Project identity and organization"}
             </p>
           </div>
@@ -406,6 +413,7 @@ export function WorkspaceSettingsDialog({
   const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onClose);
   const generatedDialogId = useId();
   const titleId = `${generatedDialogId}-title`;
+  const descriptionId = `${generatedDialogId}-description`;
 
   if (!isOpen) {
     return null;
@@ -419,6 +427,7 @@ export function WorkspaceSettingsDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         className="w-full max-w-[620px] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
@@ -426,7 +435,9 @@ export function WorkspaceSettingsDialog({
             <h2 id={titleId} className="text-[16px] font-semibold text-[var(--color-ink)]">
               Workspace Settings
             </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-muted)]">Appearance, backups, and local storage.</p>
+            <p id={descriptionId} className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+              Appearance, backups, and local storage.
+            </p>
           </div>
           <button
             type="button"

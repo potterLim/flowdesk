@@ -53,6 +53,23 @@ export function useDialogControls<T extends HTMLElement>(isOpen: boolean, onClos
       return undefined;
     }
 
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (!dialogRef.current || dialogRef.current.contains(document.activeElement)) {
+        return;
+      }
+
+      const [firstFocusableElement] = getFocusableElements(dialogRef.current);
+      firstFocusableElement?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();

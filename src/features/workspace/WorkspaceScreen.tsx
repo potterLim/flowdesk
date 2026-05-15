@@ -3,6 +3,7 @@ import {
   Download,
   ListChecks,
   NotebookText,
+  Pin,
   Play,
   Plus,
   Search,
@@ -542,6 +543,18 @@ export function WorkspaceScreen() {
         onSelect: () => setIsProjectSettingsOpen(true),
       },
       {
+        id: "toggle-project-pin",
+        label: selectedProject?.isPinned ? "Unpin Project" : "Pin Project",
+        detail: selectedProject ? selectedProject.title : "Select a project first",
+        icon: Pin,
+        isDisabled: !selectedProject,
+        onSelect: () => {
+          if (selectedProject) {
+            toggleProjectPinned(selectedProject.id);
+          }
+        },
+      },
+      {
         id: "search-projects",
         label: "Search Projects",
         detail: "Focus the project list search",
@@ -574,6 +587,7 @@ export function WorkspaceScreen() {
       selectedProject,
       setActiveView,
       startSession,
+      toggleProjectPinned,
     ],
   );
 
@@ -716,6 +730,7 @@ export function WorkspaceScreen() {
               onPrepareMarkdownExport={handlePrepareMarkdownExport}
               onArchiveProject={() => archiveProject(selectedProject.id)}
               onRestoreProject={() => restoreProject(selectedProject.id)}
+              onTogglePinned={() => toggleProjectPinned(selectedProject.id)}
               onOpenSettings={() => setIsProjectSettingsOpen(true)}
             />
             <ViewTabs activeView={activeView} onSelectView={setActiveView} />

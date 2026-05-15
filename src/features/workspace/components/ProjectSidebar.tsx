@@ -229,7 +229,6 @@ function ProjectRow({
           aria-label={project.isPinned ? `Unpin ${project.title}` : `Pin ${project.title}`}
           title={project.isPinned ? "Unpin project" : "Pin project"}
           onClick={() => onToggleProjectPinned(project.id)}
-          tabIndex={isSelected ? 0 : -1}
           className={clsx(
             "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:flex",
             isSelected ? "lg:opacity-100" : "lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100",
@@ -244,7 +243,6 @@ function ProjectRow({
           aria-label={`Restore ${project.title}`}
           title="Restore project"
           onClick={() => onRestoreProject(project.id)}
-          tabIndex={isSelected ? 0 : -1}
           className={clsx(
             "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[var(--color-surface)] hover:text-[var(--color-accent)] lg:flex",
             isSelected ? "lg:opacity-100" : "lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100",
@@ -258,7 +256,6 @@ function ProjectRow({
           aria-label={`Archive ${project.title}`}
           title="Archive project"
           onClick={() => onArchiveProject(project.id)}
-          tabIndex={isSelected ? 0 : -1}
           className={clsx(
             "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[var(--color-surface)] hover:text-amber-700 lg:flex",
             isSelected ? "lg:opacity-100" : "lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100",

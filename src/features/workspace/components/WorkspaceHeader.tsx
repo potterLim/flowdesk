@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Download, ListChecks, NotebookText, Play, Settings2, Square, Tags } from "lucide-react";
+import { Archive, ArchiveRestore, Download, ListChecks, NotebookText, Pin, Play, Settings2, Square, Tags } from "lucide-react";
 import { clsx } from "clsx";
 import type { Project, WorkspaceView } from "../../../domain/workspace";
 import { formatDateTime } from "../../../lib/date";
@@ -17,6 +17,7 @@ export function WorkspaceHeader({
   onPrepareMarkdownExport,
   onArchiveProject,
   onRestoreProject,
+  onTogglePinned,
   onOpenSettings,
 }: {
   project: Project;
@@ -29,6 +30,7 @@ export function WorkspaceHeader({
   onPrepareMarkdownExport: () => void;
   onArchiveProject: () => void;
   onRestoreProject: () => void;
+  onTogglePinned: () => void;
   onOpenSettings: () => void;
 }) {
   return (
@@ -98,6 +100,13 @@ export function WorkspaceHeader({
           ) : (
             <ActionButton icon={ArchiveRestore} label="Restore" onClick={onRestoreProject} />
           )}
+          <IconButton
+            label={project.isPinned ? "Unpin project" : "Pin project"}
+            icon={Pin}
+            isActive={project.isPinned}
+            size="md"
+            onClick={onTogglePinned}
+          />
           <IconButton label="Project settings" icon={Settings2} size="md" onClick={onOpenSettings} />
         </div>
       </div>

@@ -1,7 +1,7 @@
 [package]
 name = "flowdesk"
 version = "0.1.0"
-description = "A local-first research and study workspace."
+description = "A desktop workspace for projects, notes, tasks, sessions, files, and research records."
 authors = ["FlowDesk Contributors"]
 license = ""
 repository = ""
