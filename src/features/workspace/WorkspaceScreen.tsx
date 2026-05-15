@@ -512,7 +512,6 @@ export function WorkspaceScreen() {
         id: "save-workspace-backup",
         label: "Back Up Workspace",
         detail: "Save a complete workspace backup",
-        shortcut: "Command/Ctrl+Shift+B",
         icon: Database,
         onSelect: handleSaveWorkspaceBackup,
       },
@@ -654,12 +653,6 @@ export function WorkspaceScreen() {
       if (key === "e" && selectedProject) {
         event.preventDefault();
         handlePrepareMarkdownExport();
-        return;
-      }
-
-      if (key === "b" && event.shiftKey) {
-        event.preventDefault();
-        void handleSaveWorkspaceBackup();
         return;
       }
 

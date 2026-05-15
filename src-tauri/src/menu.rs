@@ -54,7 +54,7 @@ pub(crate) fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<
         "save_workspace_backup",
         "Back Up Workspace...",
         true,
-        Some("CmdOrCtrl+Shift+B"),
+        None::<&str>,
     )?;
     let restore_workspace_backup = MenuItem::with_id(
         app,

@@ -78,7 +78,6 @@ export function WorkspaceDataControls({
           type="button"
           onClick={onSaveWorkspaceBackup}
           disabled={isBusy}
-          aria-keyshortcuts="Meta+Shift+B Control+Shift+B"
           className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[12px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
         >
           <Download size={13} />
