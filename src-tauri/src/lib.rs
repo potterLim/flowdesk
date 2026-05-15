@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{
     query::Query,
@@ -6,7 +6,9 @@ use sqlx::{
     Connection, Sqlite, SqliteConnection,
 };
 use std::{
+    backtrace::Backtrace,
     env, fs,
+    panic,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -16,7 +18,7 @@ use tauri::{
 };
 
 const FLOWDESK_MENU_EVENT: &str = "flowdesk://menu";
-const APP_MENU_COMMANDS: [&str; 10] = [
+const APP_MENU_COMMANDS: [&str; 11] = [
     "new_project",
     "new_note",
     "new_task",
@@ -24,6 +26,7 @@ const APP_MENU_COMMANDS: [&str; 10] = [
     "export_markdown",
     "save_workspace_backup",
     "restore_workspace_backup",
+    "export_diagnostics",
     "open_workspace_settings",
     "open_command_palette",
     "search_projects",
@@ -34,6 +37,29 @@ struct SqliteStatement {
     query: String,
     #[serde(default)]
     values: Vec<Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseDiagnostics {
+    product_name: &'static str,
+    version: &'static str,
+    build_profile: &'static str,
+    operating_system: &'static str,
+    architecture: &'static str,
+    app_config_dir: Option<String>,
+    app_data_dir: Option<String>,
+    app_log_dir: Option<String>,
+    database_path: String,
+    database_exists: bool,
+    database_integrity: DatabaseIntegrity,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", content = "detail")]
+enum DatabaseIntegrity {
+    Ok,
+    NotFound,
+    Error(String),
 }
 
 #[tauri::command]
@@ -47,6 +73,34 @@ fn get_workspace_database_url() -> Result<String, String> {
     }
 
     Ok("sqlite:flowdesk.db".into())
+}
+
+#[tauri::command]
+async fn get_release_diagnostics(
+    app: tauri::AppHandle,
+    database_url: String,
+) -> Result<ReleaseDiagnostics, String> {
+    let database_path = resolve_database_path(&app, &database_url)?;
+    let database_exists = database_path.exists();
+    let database_integrity = check_database_integrity(&database_path).await;
+
+    Ok(ReleaseDiagnostics {
+        product_name: "FlowDesk",
+        version: env!("CARGO_PKG_VERSION"),
+        build_profile: if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
+        operating_system: env::consts::OS,
+        architecture: env::consts::ARCH,
+        app_config_dir: resolve_app_path(&app, |path| path.app_config_dir()),
+        app_data_dir: resolve_app_path(&app, |path| path.app_data_dir()),
+        app_log_dir: resolve_app_path(&app, |path| path.app_log_dir()),
+        database_path: database_path.to_string_lossy().into_owned(),
+        database_exists,
+        database_integrity,
+    })
 }
 
 #[tauri::command]
@@ -137,6 +191,41 @@ fn database_recovery_files(database_path: &Path) -> [PathBuf; 3] {
     ]
 }
 
+fn resolve_app_path(
+    app: &tauri::AppHandle,
+    resolver: impl FnOnce(&tauri::path::PathResolver<tauri::Wry>) -> tauri::Result<PathBuf>,
+) -> Option<String> {
+    resolver(&app.path())
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+async fn check_database_integrity(database_path: &Path) -> DatabaseIntegrity {
+    if !database_path.exists() {
+        return DatabaseIntegrity::NotFound;
+    }
+
+    let options = SqliteConnectOptions::new()
+        .filename(database_path)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal);
+
+    let mut connection = match SqliteConnection::connect_with(&options).await {
+        Ok(connection) => connection,
+        Err(error) => return DatabaseIntegrity::Error(error.to_string()),
+    };
+
+    match sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+        .fetch_one(&mut connection)
+        .await
+    {
+        Ok(result) if result.eq_ignore_ascii_case("ok") => DatabaseIntegrity::Ok,
+        Ok(result) => DatabaseIntegrity::Error(result),
+        Err(error) => DatabaseIntegrity::Error(error.to_string()),
+    }
+}
+
 fn resolve_database_path(app: &tauri::AppHandle, database_url: &str) -> Result<PathBuf, String> {
     let database_file = database_url
         .strip_prefix("sqlite:")
@@ -186,6 +275,19 @@ fn bind_sqlite_value<'query>(
     })
 }
 
+fn install_panic_hook() {
+    let default_hook = panic::take_hook();
+
+    panic::set_hook(Box::new(move |panic_info| {
+        log::error!(
+            target: "flowdesk::panic",
+            "Unhandled panic: {panic_info}\nBacktrace:\n{}",
+            Backtrace::force_capture()
+        );
+        default_hook(panic_info);
+    }));
+}
+
 fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("FlowDesk".into()),
@@ -231,6 +333,13 @@ fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         None::<&str>,
     )?;
+    let export_diagnostics = MenuItem::with_id(
+        app,
+        "export_diagnostics",
+        "Export Diagnostics...",
+        true,
+        None::<&str>,
+    )?;
     let open_workspace_settings = MenuItem::with_id(
         app,
         "open_workspace_settings",
@@ -257,6 +366,7 @@ fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<Wry>> {
         .about(Some(about_metadata))
         .separator()
         .item(&open_workspace_settings)
+        .item(&export_diagnostics)
         .separator()
         .hide()
         .hide_others()
@@ -311,9 +421,12 @@ fn build_flowdesk_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<Wry>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_hook();
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_workspace_database_url,
+            get_release_diagnostics,
             execute_workspace_transaction,
             reset_workspace_database
         ])
@@ -336,16 +449,15 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("FlowDesk");
             }

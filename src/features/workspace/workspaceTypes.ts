@@ -18,3 +18,10 @@ export type WorkspaceBackupState =
   | { status: "restored"; projectCount: number }
   | { status: "cancelled" }
   | { status: "error"; message: string };
+
+export type DiagnosticsExportState =
+  | { status: "saving" }
+  | { status: "saved"; path: string }
+  | { status: "downloaded"; fileName: string }
+  | { status: "cancelled" }
+  | { status: "error"; message: string };

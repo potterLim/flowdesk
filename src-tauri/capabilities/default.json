@@ -18,6 +18,7 @@
     "fs:allow-rename",
     "fs:allow-stat",
     "fs:allow-write-text-file",
+    "log:default",
     "opener:default",
     "opener:allow-open-path",
     "sql:default",

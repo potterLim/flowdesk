@@ -50,6 +50,7 @@ import {
   type ExportFormat,
 } from "../../lib/exportProjectRecord";
 import type { WorkspacePersistenceMode } from "../../lib/persistence/workspaceRepository";
+import { saveReleaseDiagnostics } from "../../lib/releaseDiagnostics";
 import { saveWorkspaceBackup, selectWorkspaceBackup } from "../../lib/workspaceBackup";
 import { openWorkspaceFile, revealWorkspaceFile, selectWorkspaceFiles } from "../../lib/workspaceFiles";
 import {
@@ -74,7 +75,7 @@ import {
   isTextEntryTarget,
   parseTags,
 } from "./workspaceUtils";
-import type { ExportSaveState, ThemeMode, WorkspaceBackupState } from "./workspaceTypes";
+import type { DiagnosticsExportState, ExportSaveState, ThemeMode, WorkspaceBackupState } from "./workspaceTypes";
 
 const MarkdownEditor = lazy(() =>
   import("../../components/MarkdownEditor").then((module) => ({
@@ -94,6 +95,7 @@ export function WorkspaceScreen() {
   const [isStorageRepairConfirmOpen, setIsStorageRepairConfirmOpen] = useState(false);
   const [exportSaveState, setExportSaveState] = useState<ExportSaveState | null>(null);
   const [workspaceBackupState, setWorkspaceBackupState] = useState<WorkspaceBackupState | null>(null);
+  const [diagnosticsExportState, setDiagnosticsExportState] = useState<DiagnosticsExportState | null>(null);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
@@ -319,6 +321,28 @@ export function WorkspaceScreen() {
     }
   };
 
+  const handleExportDiagnostics = async () => {
+    setDiagnosticsExportState({ status: "saving" });
+
+    try {
+      const result = await saveReleaseDiagnostics();
+
+      if (result.status === "saved") {
+        setDiagnosticsExportState({ status: "saved", path: result.path });
+        return;
+      }
+
+      if (result.status === "downloaded") {
+        setDiagnosticsExportState({ status: "downloaded", fileName: result.fileName });
+        return;
+      }
+
+      setDiagnosticsExportState({ status: "cancelled" });
+    } catch (error: unknown) {
+      setDiagnosticsExportState({ status: "error", message: getErrorMessage(error) });
+    }
+  };
+
   const handleConfirmWorkspaceRestore = () => {
     if (!pendingWorkspaceRestore) {
       return;
@@ -415,6 +439,11 @@ export function WorkspaceScreen() {
         return;
       }
 
+      if (command === "export_diagnostics") {
+        void handleExportDiagnostics();
+        return;
+      }
+
       if (command === "open_workspace_settings") {
         setIsWorkspaceSettingsOpen(true);
         return;
@@ -433,6 +462,7 @@ export function WorkspaceScreen() {
       canEditProject,
       createNote,
       handleImportFiles,
+      handleExportDiagnostics,
       handlePrepareMarkdownExport,
       handleSaveWorkspaceBackup,
       handleSelectWorkspaceBackup,
@@ -522,6 +552,13 @@ export function WorkspaceScreen() {
         onSelect: handleSelectWorkspaceBackup,
       },
       {
+        id: "export-diagnostics",
+        label: "Export Diagnostics",
+        detail: "Save local paths, DB health, and app build details",
+        icon: Database,
+        onSelect: handleExportDiagnostics,
+      },
+      {
         id: "project-settings",
         label: "Project Settings",
         detail: selectedProject ? selectedProject.title : "Select a project first",
@@ -553,6 +590,7 @@ export function WorkspaceScreen() {
       createNote,
       endActiveSession,
       handleImportFiles,
+      handleExportDiagnostics,
       handlePrepareMarkdownExport,
       handleSaveWorkspaceBackup,
       handleSelectWorkspaceBackup,
@@ -810,9 +848,11 @@ export function WorkspaceScreen() {
         persistenceError={persistenceError}
         lastPersistedAt={lastPersistedAt}
         workspaceBackupState={workspaceBackupState}
+        diagnosticsExportState={diagnosticsExportState}
         onChangeTheme={setThemeMode}
         onSaveWorkspaceBackup={handleSaveWorkspaceBackup}
         onSelectWorkspaceBackup={handleSelectWorkspaceBackup}
+        onExportDiagnostics={handleExportDiagnostics}
         onRequestRepair={() => {
           setIsWorkspaceSettingsOpen(false);
           setIsStorageRepairConfirmOpen(true);
@@ -1489,9 +1529,11 @@ function WorkspaceSettingsDialog({
   persistenceError,
   lastPersistedAt,
   workspaceBackupState,
+  diagnosticsExportState,
   onChangeTheme,
   onSaveWorkspaceBackup,
   onSelectWorkspaceBackup,
+  onExportDiagnostics,
   onRequestRepair,
   onClose,
 }: {
@@ -1502,9 +1544,11 @@ function WorkspaceSettingsDialog({
   persistenceError: string | null;
   lastPersistedAt: string | null;
   workspaceBackupState: WorkspaceBackupState | null;
+  diagnosticsExportState: DiagnosticsExportState | null;
   onChangeTheme: (themeMode: ThemeMode) => void;
   onSaveWorkspaceBackup: () => void;
   onSelectWorkspaceBackup: () => void;
+  onExportDiagnostics: () => void;
   onRequestRepair: () => void;
   onClose: () => void;
 }) {
@@ -1582,6 +1626,30 @@ function WorkspaceSettingsDialog({
                   onSaveWorkspaceBackup={onSaveWorkspaceBackup}
                   onSelectWorkspaceBackup={onSelectWorkspaceBackup}
                 />
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 border-t border-[var(--color-border)] pt-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-selection)] text-[var(--color-accent)]">
+                <FileText size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Diagnostics</h3>
+                <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
+                  Export a support file with app version, platform, local storage paths, log folder, and database health.
+                </p>
+                <button
+                  type="button"
+                  onClick={onExportDiagnostics}
+                  disabled={diagnosticsExportState?.status === "saving"}
+                  className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-[13px] font-semibold whitespace-nowrap text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  <Download size={14} />
+                  Export Diagnostics
+                </button>
+                <DiagnosticsStatusMessage diagnosticsExportState={diagnosticsExportState} />
               </div>
             </div>
           </section>
@@ -2083,6 +2151,54 @@ function WorkspaceBackupStatusMessage({
   return (
     <p className={clsx(baseClass, "text-[11px] font-semibold leading-5 text-red-700")} role="alert">
       {workspaceBackupState.message}
+    </p>
+  );
+}
+
+function DiagnosticsStatusMessage({
+  diagnosticsExportState,
+}: {
+  diagnosticsExportState: DiagnosticsExportState | null;
+}) {
+  if (!diagnosticsExportState) {
+    return null;
+  }
+
+  if (diagnosticsExportState.status === "saving") {
+    return (
+      <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--color-accent)]" role="status" aria-live="polite">
+        Preparing diagnostics...
+      </p>
+    );
+  }
+
+  if (diagnosticsExportState.status === "saved") {
+    return (
+      <p className="mt-2 truncate text-[11px] font-medium leading-5 text-emerald-700" role="status" aria-live="polite">
+        Diagnostics saved.
+      </p>
+    );
+  }
+
+  if (diagnosticsExportState.status === "downloaded") {
+    return (
+      <p className="mt-2 truncate text-[11px] font-medium leading-5 text-emerald-700" role="status" aria-live="polite">
+        Downloaded {diagnosticsExportState.fileName}.
+      </p>
+    );
+  }
+
+  if (diagnosticsExportState.status === "cancelled") {
+    return (
+      <p className="mt-2 text-[11px] leading-5 text-[var(--color-muted)]" role="status" aria-live="polite">
+        No diagnostics file saved.
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-2 text-[11px] font-semibold leading-5 text-red-700" role="alert">
+      {diagnosticsExportState.message}
     </p>
   );
 }
