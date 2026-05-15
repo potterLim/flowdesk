@@ -1,4 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 
 const durationMinutes = readDurationMinutes();
@@ -61,6 +63,8 @@ function readDurationMinutes() {
 
 function createWorkspaceFixture() {
   const now = "2026-05-15T00:00:00.000Z";
+  const managedFileRoot = join(tmpdir(), "flowdesk-soak");
+  const sourceFileRoot = join(tmpdir(), "flowdesk-source");
   const projects = Array.from({ length: 18 }, (_, index) => ({
     id: `project-${index}`,
     title: `Long Run Project ${index + 1}`,
@@ -131,8 +135,8 @@ function createWorkspaceFixture() {
         name: `artifact-${index + 1}.csv`,
         fileType: "csv",
         sizeLabel: `${index + 1}.0 MB`,
-        path: `/tmp/flowdesk-soak/artifact-${index + 1}.csv`,
-        sourcePath: `/tmp/flowdesk-source/artifact-${index + 1}.csv`,
+        path: join(managedFileRoot, `artifact-${index + 1}.csv`),
+        sourcePath: join(sourceFileRoot, `artifact-${index + 1}.csv`),
         storageMode: "managed",
         tags: ["artifact"],
         importedAt: now,

@@ -69,23 +69,23 @@ export function FirstRunView({
   };
 
   return (
-    <section className="flex min-h-0 flex-1 items-center justify-center px-5 py-8 sm:px-8 lg:px-10">
-      <div className="grid w-full max-w-[1080px] gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <section className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 lg:px-10">
+      <div className="mx-auto grid w-full max-w-[1080px] gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <form
           onSubmit={handleSubmit}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-soft)] sm:p-8"
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-soft)] sm:p-6"
         >
           <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-[var(--color-accent)] text-white">
             <PanelLeft size={20} />
           </div>
-          <h2 className="mt-6 max-w-2xl text-[32px] font-semibold leading-tight tracking-normal text-[var(--color-ink)]">
+          <h2 className="mt-5 max-w-2xl text-[28px] font-semibold leading-tight tracking-normal text-[var(--color-ink)]">
             Create your first project.
           </h2>
-          <p className="mt-3 max-w-2xl text-[15px] leading-7 text-[var(--color-muted)]">
+          <p className="mt-2 max-w-2xl text-[15px] leading-6 text-[var(--color-muted)]">
             FlowDesk keeps notes, tasks, sessions, files, and exports organized around a durable project record.
           </p>
 
-          <div className="mt-7 grid gap-4">
+          <div className="mt-5 grid gap-3">
             <ProjectTextField
               label="Project name"
               value={title}
@@ -103,7 +103,7 @@ export function FirstRunView({
             <ProjectAccentPicker value={accent} onChange={setAccent} />
           </div>
 
-          <div className="mt-7 flex items-center justify-between gap-3">
+          <div className="mt-5 flex items-center justify-between gap-3">
             <p className="text-[12px] leading-5 text-[var(--color-muted)]">Private by default. Stored on this device.</p>
             <button
               type="submit"

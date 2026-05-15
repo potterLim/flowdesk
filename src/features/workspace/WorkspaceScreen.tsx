@@ -730,7 +730,7 @@ export function WorkspaceScreen() {
               onOpenSettings={() => setIsProjectSettingsOpen(true)}
             />
             <ViewTabs activeView={activeView} onSelectView={setActiveView} />
-            <section className="min-h-0 flex-1 overflow-visible px-3 pb-5 sm:px-5 lg:overflow-hidden">
+            <section className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-visible px-3 pb-5 sm:px-5 lg:overflow-y-hidden">
               {persistenceStatus === "error" && (
                 <PersistenceAlert error={persistenceError} onRequestRepair={() => setIsStorageRepairConfirmOpen(true)} />
               )}

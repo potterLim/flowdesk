@@ -7,7 +7,9 @@ use database::{execute_workspace_transaction, get_workspace_database_url, reset_
 use diagnostics::get_release_diagnostics;
 use menu::{build_flowdesk_menu, APP_MENU_COMMANDS, FLOWDESK_MENU_EVENT};
 use runtime::install_panic_hook;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Manager};
+#[cfg(target_os = "macos")]
+use tauri::WindowEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,13 +30,11 @@ pub fn run() {
                 let _ = app.emit(FLOWDESK_MENU_EVENT, menu_id);
             }
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                #[cfg(target_os = "macos")]
-                {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
+        .on_window_event(|_window, _event| {
+            #[cfg(target_os = "macos")]
+            if let WindowEvent::CloseRequested { api, .. } = _event {
+                api.prevent_close();
+                let _ = _window.hide();
             }
         })
         .plugin(tauri_plugin_dialog::init())

@@ -35,8 +35,8 @@ export function WorkspaceHeader({
 }) {
   return (
     <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
-      <div className="flex flex-col items-start justify-between gap-4 xl:flex-row">
-        <div className="w-full min-w-0 xl:w-auto">
+      <div className="flex flex-col items-start justify-between gap-4 2xl:flex-row">
+        <div className="w-full min-w-0 2xl:w-auto">
           <div className="flex min-w-0 items-center gap-2">
             <span
               className={clsx(
@@ -63,7 +63,7 @@ export function WorkspaceHeader({
             <span className="text-[12px] text-[var(--color-muted)]">Updated {formatDateTime(project.updatedAt)}</span>
           </div>
         </div>
-        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 xl:w-auto xl:shrink-0">
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 2xl:w-auto 2xl:shrink-0">
           {canEditProject && (
             activeSessionLabel ? (
               <button

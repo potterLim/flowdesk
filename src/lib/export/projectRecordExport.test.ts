@@ -7,6 +7,13 @@ import {
   getProjectRecordSnapshot,
 } from "./projectRecordExport";
 
+const runtimeProcess = (globalThis as { process?: { platform?: string } }).process;
+const fixturePathSeparator = runtimeProcess?.platform === "win32" ? "\\" : "/";
+
+function createFixturePath(...segments: string[]): string {
+  return segments.join(fixturePathSeparator);
+}
+
 function createStressWorkspace(): WorkspaceSnapshot {
   const now = "2026-05-15T00:00:00.000Z";
   const projects = Array.from({ length: 12 }, (_, projectIndex) => ({
@@ -79,8 +86,8 @@ function createStressWorkspace(): WorkspaceSnapshot {
         name: `dataset-${fileIndex + 1}.csv`,
         fileType: "csv" as const,
         sizeLabel: `${fileIndex + 1}.0 MB`,
-        path: `/tmp/flowdesk-stress/dataset-${fileIndex + 1}.csv`,
-        sourcePath: `/tmp/import-source/dataset-${fileIndex + 1}.csv`,
+        path: createFixturePath("flowdesk-stress", `dataset-${fileIndex + 1}.csv`),
+        sourcePath: createFixturePath("import-source", `dataset-${fileIndex + 1}.csv`),
         storageMode: "managed" as const,
         tags: ["dataset"],
         importedAt: now,

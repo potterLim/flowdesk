@@ -43,9 +43,9 @@ export function OverviewView({
   const activeSession = sessions.find((session) => session.endedAt === null);
 
   return (
-    <div className="grid h-auto min-h-0 grid-cols-1 gap-5 pt-5 xl:h-full xl:grid-cols-[minmax(0,1fr)_330px]">
-      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <div className="grid h-full w-full max-w-full min-w-0 grid-cols-1 gap-5 overflow-y-auto pt-5 2xl:grid-cols-[minmax(0,1fr)_330px] 2xl:overflow-hidden">
+      <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-5">
+        <div className="grid w-full max-w-full min-w-0 grid-cols-1 gap-3 2xl:grid-cols-5">
           <MetricPanel label="Notes" value={notes.length.toString()} detail="Markdown records" icon={NotebookText} />
           <MetricPanel label="Tasks" value={`${completedTaskCount}/${tasks.length}`} detail="Completed" icon={CheckSquare} />
           <MetricPanel label="Sessions" value={sessions.length.toString()} detail="Tracked blocks" icon={Timer} />
@@ -97,7 +97,7 @@ export function OverviewView({
         </div>
       </div>
 
-      <div className="min-h-0 space-y-5 overflow-visible xl:overflow-y-auto">
+      <div className="min-h-0 space-y-5 overflow-visible 2xl:overflow-y-auto">
         <SessionCard
           activeSession={activeSession}
           sessions={sessions}
