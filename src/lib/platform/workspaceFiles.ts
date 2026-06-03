@@ -1,4 +1,4 @@
-import type { WorkspaceFileType } from "../../domain/workspace";
+import type { WorkspaceFile, WorkspaceFileType } from "../../domain/workspace";
 import { isTauriRuntime } from "./tauriRuntime";
 
 export interface SelectedWorkspaceFile {
@@ -183,4 +183,24 @@ export async function openWorkspaceFile(path: string): Promise<void> {
   const { openPath } = await import("@tauri-apps/plugin-opener");
 
   await openPath(path);
+}
+
+export async function removeManagedWorkspaceFiles(files: WorkspaceFile[]): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const managedFiles = files.filter((file) => file.storageMode === "managed" && file.path.trim().length > 0);
+
+  if (managedFiles.length === 0) {
+    return;
+  }
+
+  const { exists, remove } = await import("@tauri-apps/plugin-fs");
+
+  for (const file of managedFiles) {
+    if (await exists(file.path)) {
+      await remove(file.path);
+    }
+  }
 }

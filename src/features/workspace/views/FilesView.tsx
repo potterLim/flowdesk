@@ -20,7 +20,7 @@ export function FilesView({
   onImportFiles: () => void;
   onOpenFile: (path: string) => void;
   onRevealFile: (path: string) => void;
-  onDeleteFile: (fileId: string) => void;
+  onDeleteFile: (fileId: string) => void | Promise<void>;
 }) {
   const [selectedFileId, setSelectedFileId] = useState("");
 
@@ -163,7 +163,9 @@ export function FilesView({
                 {canEditProject && (
                   <button
                     type="button"
-                    onClick={() => onDeleteFile(selectedFile.id)}
+                    onClick={() => {
+                      void onDeleteFile(selectedFile.id);
+                    }}
                     className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
                   >
                     <Trash2 size={14} />

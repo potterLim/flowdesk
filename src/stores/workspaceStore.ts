@@ -24,6 +24,7 @@ import {
 } from "../lib/export/projectRecordExport";
 
 export type PersistenceStatus = "hydrating" | "saving" | "saved" | "error";
+export type ProjectRecordExportFormat = "markdown" | "json";
 
 export interface CreateProjectInput {
   title: string;
@@ -85,6 +86,7 @@ interface WorkspaceState extends WorkspaceSnapshot {
   endActiveSession: () => void;
   prepareMarkdownExport: () => string | null;
   prepareJsonExport: () => string | null;
+  recordProjectExport: (format: ProjectRecordExportFormat) => void;
   replaceWorkspace: (snapshot: WorkspaceSnapshot) => void;
   resetWorkspace: () => void;
 }
@@ -292,15 +294,43 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   repairWorkspaceStorage() {
+    const revision = ++persistenceRevision;
+
     set({ persistenceStatus: "saving", persistenceError: null });
-    void resetWorkspaceRepositoryStorage()
-      .then(() => get().hydrateWorkspace())
+
+    persistenceQueue = persistenceQueue
+      .catch(() => undefined)
+      .then(async () => {
+        await resetWorkspaceRepositoryStorage();
+
+        const repository = await getWorkspaceRepository();
+        const cleanWorkspace = createEmptyWorkspace();
+
+        await repository.saveWorkspace(cleanWorkspace);
+
+        if (revision === persistenceRevision) {
+          set({
+            ...cleanWorkspace,
+            activeView: "overview",
+            selectedProjectId: "",
+            selectedNoteId: "",
+            exportPreview: "",
+            persistenceMode: repository.mode,
+            persistenceStatus: "saved",
+            persistenceError: null,
+            lastPersistedAt: new Date().toISOString(),
+          });
+        }
+      })
       .catch((error: unknown) => {
         console.error("Failed to rebuild FlowDesk workspace storage", error);
-        set({
-          persistenceStatus: "error",
-          persistenceError: getErrorMessage(error),
-        });
+
+        if (revision === persistenceRevision) {
+          set({
+            persistenceStatus: "error",
+            persistenceError: getErrorMessage(error),
+          });
+        }
       });
   },
 
@@ -871,12 +901,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       exportPreview: exportContent,
       activeView: "exports",
-      timelineEvents: [
-        createTimelineEvent(project.id, "Export generated", "Prepared Markdown project record.", "export_generated"),
-        ...state.timelineEvents,
-      ],
     });
-    persistCurrentState(set, get);
 
     return exportContent;
   },
@@ -901,14 +926,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({
       exportPreview: exportContent,
       activeView: "exports",
-      timelineEvents: [
-        createTimelineEvent(projectId, "Export generated", "Prepared JSON project record.", "export_generated"),
-        ...state.timelineEvents,
-      ],
     });
-    persistCurrentState(set, get);
 
     return exportContent;
+  },
+
+  recordProjectExport(format) {
+    const state = get();
+    const project = state.projects.find((candidateProject) => candidateProject.id === state.selectedProjectId);
+
+    if (!project) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const formatLabel = format === "markdown" ? "Markdown" : "JSON";
+
+    set({
+      timelineEvents: [
+        createTimelineEvent(project.id, "Export generated", `Saved ${formatLabel} project record.`, "export_generated"),
+        ...state.timelineEvents,
+      ],
+      projects: updateProjectTimestamp(state.projects, project.id, now),
+    });
+    persistCurrentState(set, get);
   },
 
   replaceWorkspace(snapshot) {

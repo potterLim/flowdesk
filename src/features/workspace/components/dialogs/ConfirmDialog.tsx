@@ -18,7 +18,7 @@ export function ConfirmDialog({
   confirmLabel: string;
   variant?: "danger" | "warning";
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }) {
   const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onCancel);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -78,7 +78,9 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => {
+              void onConfirm();
+            }}
             className={clsx("h-9 rounded-md px-3 text-[13px] font-semibold whitespace-nowrap transition", confirmClass)}
           >
             {confirmLabel}

@@ -21,7 +21,12 @@ import {
 } from "../../lib/export/exportProjectRecord";
 import { saveWorkspaceBackup, selectWorkspaceBackup } from "../../lib/backup/workspaceBackup";
 import { saveReleaseDiagnostics } from "../../lib/diagnostics/releaseDiagnostics";
-import { openWorkspaceFile, revealWorkspaceFile, selectWorkspaceFiles } from "../../lib/platform/workspaceFiles";
+import {
+  openWorkspaceFile,
+  removeManagedWorkspaceFiles,
+  revealWorkspaceFile,
+  selectWorkspaceFiles,
+} from "../../lib/platform/workspaceFiles";
 import {
   useWorkspaceStore,
   type CreateProjectInput,
@@ -109,6 +114,7 @@ export function WorkspaceScreen() {
   const endActiveSession = useWorkspaceStore((state) => state.endActiveSession);
   const prepareMarkdownExport = useWorkspaceStore((state) => state.prepareMarkdownExport);
   const prepareJsonExport = useWorkspaceStore((state) => state.prepareJsonExport);
+  const recordProjectExport = useWorkspaceStore((state) => state.recordProjectExport);
   const replaceWorkspace = useWorkspaceStore((state) => state.replaceWorkspace);
   const repairWorkspaceStorage = useWorkspaceStore((state) => state.repairWorkspaceStorage);
 
@@ -182,6 +188,24 @@ export function WorkspaceScreen() {
     }
   };
 
+  const handleDeleteFile = async (fileId: string) => {
+    const workspaceFile = files.find((file) => file.id === fileId);
+
+    if (!workspaceFile) {
+      return;
+    }
+
+    setFileActionError(null);
+
+    try {
+      await removeManagedWorkspaceFiles([workspaceFile]);
+      deleteFile(fileId);
+    } catch (error: unknown) {
+      setFileActionError(getErrorMessage(error));
+      setActiveView("files");
+    }
+  };
+
   const handlePrepareMarkdownExport = () => {
     setExportSaveState(null);
     prepareMarkdownExport();
@@ -218,11 +242,13 @@ export function WorkspaceScreen() {
       });
 
       if (result.status === "saved") {
+        recordProjectExport(format);
         setExportSaveState({ status: "saved", format, path: result.path });
         return;
       }
 
       if (result.status === "downloaded") {
+        recordProjectExport(format);
         setExportSaveState({ status: "downloaded", format, fileName: result.fileName });
         return;
       }
@@ -344,12 +370,23 @@ export function WorkspaceScreen() {
     setIsProjectSettingsOpen(false);
   };
 
-  const handleConfirmProjectDelete = () => {
+  const handleConfirmProjectDelete = async () => {
     if (!pendingProjectDeleteId) {
       return;
     }
 
-    deleteProject(pendingProjectDeleteId);
+    const projectFilesToRemove = files.filter((file) => file.projectId === pendingProjectDeleteId);
+
+    setFileActionError(null);
+
+    try {
+      await removeManagedWorkspaceFiles(projectFilesToRemove);
+      deleteProject(pendingProjectDeleteId);
+    } catch (error: unknown) {
+      setFileActionError(getErrorMessage(error));
+      setActiveView("files");
+    }
+
     setPendingProjectDeleteId(null);
     setIsProjectSettingsOpen(false);
   };
@@ -786,7 +823,7 @@ export function WorkspaceScreen() {
                   onImportFiles={handleImportFiles}
                   onOpenFile={handleOpenFile}
                   onRevealFile={handleRevealFile}
-                  onDeleteFile={deleteFile}
+                  onDeleteFile={handleDeleteFile}
                 />
               )}
               {activeView === "timeline" && <TimelineView timelineEvents={projectTimelineEvents} />}
