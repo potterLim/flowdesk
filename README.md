@@ -1,13 +1,31 @@
 # FlowDesk
 
-FlowDesk는 프로젝트, 노트, 작업, 작업 세션, 파일, 내보내기 기록을 한곳에서 정리하는 데스크톱 워크스페이스입니다.
+FlowDesk는 프로젝트, Markdown 노트, 작업, 작업 세션, 파일, 타임라인, 백업과 내보내기를 한곳에서 관리하는 데스크톱 워크스페이스입니다.
 
 학생, 연구자, 개발자가 긴 호흡의 프로젝트를 진행할 때 필요한 기록 구조와 작업 흐름에 집중합니다. 거대한 올인원 문서 도구보다 프로젝트 단위의 정리, 추적, 보관에 초점을 둡니다.
+
+## 스크린샷
+
+### 프로젝트 Overview
+
+![FlowDesk overview](assets/screenshots/flowdesk-overview-light.png)
+
+### Markdown 노트와 실시간 미리보기
+
+![FlowDesk notes](assets/screenshots/flowdesk-notes-light.png)
+
+### 파일 관리
+
+![FlowDesk files](assets/screenshots/flowdesk-files-light.png)
+
+### 프로젝트 Timeline
+
+![FlowDesk timeline](assets/screenshots/flowdesk-timeline-light.png)
 
 ## 주요 기능
 
 - 프로젝트 생성, 고정, 보관, 색상 지정
-- Markdown 노트 편집과 미리보기
+- Markdown 노트 편집과 렌더링 미리보기
 - 작업 생성, 우선순위, 상태 관리
 - 작업 세션 시작/종료와 세션 기록
 - 파일 가져오기, 열기, Finder/Explorer에서 보기
@@ -17,7 +35,7 @@ FlowDesk는 프로젝트, 노트, 작업, 작업 세션, 파일, 내보내기 �
 - 진단 정보 내보내기
 - macOS/Windows 네이티브 메뉴와 데스크톱 패키징
 
-## 현재 진행 상태
+## 프로젝트 상태
 
 FlowDesk는 데스크톱 워크스페이스의 핵심 흐름을 중심으로 개발되어 있습니다. 프로젝트 생성과 정리, Markdown 노트 작성, 작업과 세션 기록, 파일 관리, 타임라인, 백업/복원, Markdown/JSON 내보내기를 하나의 작업 공간 안에서 사용할 수 있습니다.
 
@@ -97,16 +115,7 @@ pnpm tauri:build
 - macOS: `FlowDesk.app`, `.dmg`
 - Windows: `.msi`, NSIS `.exe`
 
-개발 중에는 Tauri가 Vite 개발 서버를 사용하고, 배포 빌드에서는 React 빌드 결과물인 `dist/`를 데스크톱 앱에 포함합니다.
-
-```json
-{
-  "devUrl": "http://localhost:5173",
-  "frontendDist": "../dist",
-  "beforeDevCommand": "pnpm dev",
-  "beforeBuildCommand": "pnpm build"
-}
-```
+개발 중에는 Tauri가 Vite 개발 서버를 사용하고, 패키징 빌드에서는 React 빌드 결과물인 `dist/`를 데스크톱 앱에 포함합니다.
 
 ## 배포 준비
 
@@ -193,7 +202,7 @@ PFX 인증서를 로컬 Windows 머신에 가져오는 예시는 다음과 같�
 $env:WINDOWS_CERTIFICATE_PASSWORD="pfx-export-password"
 Import-PfxCertificate `
   -FilePath .\DeveloperCertificate.pfx `
-  -CertStoreLocation "<certificate-store>" `
+  -CertStoreLocation "Cert:\CurrentUser\My" `
   -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
 ```
 
@@ -268,6 +277,8 @@ flowdesk/
 │  └─ tauri.conf.json
 ├─ database/
 │  └─ migrations/
+├─ assets/
+│  └─ screenshots/
 └─ scripts/
    └─ qa/
 ```
