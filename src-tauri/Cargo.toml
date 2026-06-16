@@ -1,10 +1,9 @@
 [package]
 name = "flowdesk"
-version = "0.1.0"
+version = "0.1.1"
 description = "A desktop workspace for projects, notes, tasks, sessions, files, and research records."
 authors = ["FlowDesk Contributors"]
-license = ""
-repository = ""
+repository = "https://github.com/potterLim/flowdesk"
 edition = "2021"
 rust-version = "1.77.2"
 

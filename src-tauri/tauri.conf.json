@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FlowDesk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.flowdesk.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -35,13 +35,7 @@
     "category": "Productivity",
     "shortDescription": "Desktop workspace for structured project and research records.",
     "longDescription": "FlowDesk is a desktop workspace for organizing projects, notes, tasks, work sessions, files, and exportable research records.",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "macOS": {
       "signingIdentity": "-",
       "dmg": {
@@ -69,9 +63,7 @@
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
-        "languages": [
-          "English"
-        ],
+        "languages": ["English"],
         "displayLanguageSelector": false,
         "compression": "lzma"
       }
