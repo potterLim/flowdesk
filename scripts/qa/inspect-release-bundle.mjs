@@ -31,9 +31,9 @@ function inspectMacBundle() {
   const infoPath = join(appPath, "Contents", "Info.plist");
   const dmgPath = findFirstFile(join(bundleRoot, "dmg"), ".dmg");
 
-  requirePath(appPath, "macOS application bundle exists");
-  requirePath(infoPath, "macOS Info.plist exists");
-  requirePath(dmgPath, "macOS DMG exists");
+  assertPathExists(appPath, "macOS application bundle exists");
+  assertPathExists(infoPath, "macOS Info.plist exists");
+  assertPathExists(dmgPath, "macOS DMG exists");
 
   if (existsSync(infoPath)) {
     expectPlistValue(infoPath, "CFBundleIdentifier", "com.flowdesk.desktop");
@@ -76,10 +76,10 @@ function inspectMacBundle() {
 
 function inspectWindowsBundle() {
   const installerPath = findFirstFile(join(bundleRoot, "nsis"), ".exe");
-  requirePath(installerPath, "Windows NSIS installer exists");
+  assertPathExists(installerPath, "Windows NSIS installer exists");
 }
 
-function requirePath(path, label) {
+function assertPathExists(path, label) {
   checks.push({
     status: path && existsSync(path) ? "passed" : "failed",
     label,
