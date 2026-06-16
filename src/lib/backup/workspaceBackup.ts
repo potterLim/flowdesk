@@ -1,9 +1,10 @@
 import type { WorkspaceSnapshot } from "../../domain/workspace";
 import { normalizeWorkspaceSnapshot } from "../persistence/workspaceRepository";
+import { type FileSystemPath, toFileSystemPath } from "../platform/fileSystemPath";
 import { isTauriRuntime } from "../platform/tauriRuntime";
 
 export type WorkspaceBackupSaveResult =
-  | { status: "saved"; path: string }
+  | { status: "saved"; path: FileSystemPath }
   | { status: "downloaded"; fileName: string }
   | { status: "cancelled" };
 
@@ -47,9 +48,13 @@ function selectBrowserBackupFile(): Promise<WorkspaceSnapshot | null> {
       reader.onerror = () => reject(new Error("FlowDesk could not read the selected backup file."));
       reader.onload = () => {
         try {
-          resolve(readWorkspaceBackup(String(reader.result ?? "")));
+          if (typeof reader.result !== "string") {
+            throw new Error("FlowDesk expected a text backup file.");
+          }
+
+          resolve(readWorkspaceBackup(reader.result));
         } catch (error) {
-          reject(error);
+          reject(error instanceof Error ? error : new Error("FlowDesk could not parse the selected backup file."));
         }
       };
       reader.readAsText(file);
@@ -63,7 +68,8 @@ function selectBrowserBackupFile(): Promise<WorkspaceSnapshot | null> {
 }
 
 export function readWorkspaceBackup(content: string): WorkspaceSnapshot {
-  const snapshot = normalizeWorkspaceSnapshot(JSON.parse(content));
+  const parsedSnapshot: unknown = JSON.parse(content);
+  const snapshot = normalizeWorkspaceSnapshot(parsedSnapshot);
 
   if (!snapshot) {
     throw new Error("The selected file is not a valid FlowDesk backup.");
@@ -99,7 +105,7 @@ export async function saveWorkspaceBackup(snapshot: WorkspaceSnapshot): Promise<
 
   await writeTextFile(selectedPath, content);
 
-  return { status: "saved", path: selectedPath };
+  return { status: "saved", path: toFileSystemPath(selectedPath) };
 }
 
 export async function selectWorkspaceBackup(): Promise<WorkspaceSnapshot | null> {

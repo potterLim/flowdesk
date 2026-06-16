@@ -3,7 +3,9 @@ import { clsx } from "clsx";
 import type { WorkspacePersistenceMode } from "../../../lib/persistence/workspaceRepository";
 import { formatDateTime } from "../../../lib/date";
 import type { PersistenceStatus } from "../../../stores/workspaceStore";
-import type { DiagnosticsExportState, WorkspaceBackupState } from "../workspaceTypes";
+import type { WorkspaceBackupState } from "../workspaceTypes";
+import type { IsoDateTimeString } from "../../../domain/workspace";
+import { WorkspaceBackupStatusMessage } from "./WorkspaceStatusMessages";
 
 export function PersistenceStatusBadge({
   mode,
@@ -14,7 +16,7 @@ export function PersistenceStatusBadge({
   mode: WorkspacePersistenceMode;
   status: PersistenceStatus;
   error: string | null;
-  lastPersistedAt: string | null;
+  lastPersistedAt: IsoDateTimeString | null;
 }) {
   const label =
     status === "hydrating"
@@ -45,9 +47,7 @@ export function PersistenceStatusBadge({
     <div
       className={clsx(
         "rounded-md border px-3 py-2",
-        status === "error"
-          ? "border-red-200 bg-red-50"
-          : "border-[var(--color-border)] bg-[var(--color-app-bg)]",
+        status === "error" ? "border-red-200 bg-red-50" : "border-[var(--color-border)] bg-[var(--color-app-bg)]",
       )}
       aria-live={status === "error" || status === "saving" ? "polite" : "off"}
     >
@@ -95,129 +95,5 @@ export function WorkspaceDataControls({
       </div>
       <WorkspaceBackupStatusMessage workspaceBackupState={workspaceBackupState} tone="sidebar" />
     </div>
-  );
-}
-
-export function WorkspaceBackupStatusMessage({
-  workspaceBackupState,
-  tone,
-}: {
-  workspaceBackupState: WorkspaceBackupState | null;
-  tone: "compact" | "sidebar";
-}) {
-  if (!workspaceBackupState) {
-    return null;
-  }
-
-  const baseClass = tone === "compact" ? "mt-3" : "mt-2";
-
-  if (workspaceBackupState.status === "saving") {
-    return (
-      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-[var(--color-accent)]")} role="status" aria-live="polite">
-        Saving workspace backup...
-      </p>
-    );
-  }
-
-  if (workspaceBackupState.status === "selecting") {
-    return (
-      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-[var(--color-accent)]")} role="status" aria-live="polite">
-        Opening backup file...
-      </p>
-    );
-  }
-
-  if (workspaceBackupState.status === "saved") {
-    return (
-      <p className={clsx(baseClass, "truncate text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
-        Workspace backup saved.
-      </p>
-    );
-  }
-
-  if (workspaceBackupState.status === "downloaded") {
-    return (
-      <p className={clsx(baseClass, "truncate text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
-        Downloaded {workspaceBackupState.fileName}.
-      </p>
-    );
-  }
-
-  if (workspaceBackupState.status === "ready") {
-    return (
-      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-amber-700")} role="status" aria-live="polite">
-        Ready to restore {workspaceBackupState.projectCount} projects.
-      </p>
-    );
-  }
-
-  if (workspaceBackupState.status === "restored") {
-    return (
-      <p className={clsx(baseClass, "text-[11px] font-medium leading-5 text-emerald-700")} role="status" aria-live="polite">
-        Restored {workspaceBackupState.projectCount} projects.
-      </p>
-    );
-  }
-
-  if (workspaceBackupState.status === "cancelled") {
-    return (
-      <p className={clsx(baseClass, "text-[11px] leading-5 text-[var(--color-muted)]")} role="status" aria-live="polite">
-        No changes made.
-      </p>
-    );
-  }
-
-  return (
-    <p className={clsx(baseClass, "text-[11px] font-semibold leading-5 text-red-700")} role="alert">
-      {workspaceBackupState.message}
-    </p>
-  );
-}
-
-export function DiagnosticsStatusMessage({
-  diagnosticsExportState,
-}: {
-  diagnosticsExportState: DiagnosticsExportState | null;
-}) {
-  if (!diagnosticsExportState) {
-    return null;
-  }
-
-  if (diagnosticsExportState.status === "saving") {
-    return (
-      <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--color-accent)]" role="status" aria-live="polite">
-        Preparing diagnostics...
-      </p>
-    );
-  }
-
-  if (diagnosticsExportState.status === "saved") {
-    return (
-      <p className="mt-2 truncate text-[11px] font-medium leading-5 text-emerald-700" role="status" aria-live="polite">
-        Diagnostics saved.
-      </p>
-    );
-  }
-
-  if (diagnosticsExportState.status === "downloaded") {
-    return (
-      <p className="mt-2 truncate text-[11px] font-medium leading-5 text-emerald-700" role="status" aria-live="polite">
-        Downloaded {diagnosticsExportState.fileName}.
-      </p>
-    );
-  }
-
-  if (diagnosticsExportState.status === "cancelled") {
-    return (
-      <p className="mt-2 text-[11px] leading-5 text-[var(--color-muted)]" role="status" aria-live="polite">
-        No diagnostics file saved.
-      </p>
-    );
-  }
-
-  return (
-    <p className="mt-2 text-[11px] font-semibold leading-5 text-red-700" role="alert">
-      {diagnosticsExportState.message}
-    </p>
   );
 }

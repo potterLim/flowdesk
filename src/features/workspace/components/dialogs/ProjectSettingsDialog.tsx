@@ -1,6 +1,6 @@
 import { Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useState } from "react";
+import type { SyntheticEvent } from "react";
 import type { Project } from "../../../../domain/workspace";
 import type { UpdateProjectInput } from "../../../../stores/workspaceStore";
 import { useDialogControls } from "../../hooks/useDialogControls";
@@ -20,30 +20,41 @@ export function ProjectSettingsDialog({
   onUpdateProject: (input: UpdateProjectInput) => void;
   onRequestDelete: () => void;
 }) {
-  const [title, setTitle] = useState(project.title);
-  const [description, setDescription] = useState(project.description);
-  const [tags, setTags] = useState(project.tags.join(", "));
-  const [accent, setAccent] = useState<Project["accent"]>(project.accent);
-  const dialogRef = useDialogControls<HTMLFormElement>(isOpen, onClose);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    setTitle(project.title);
-    setDescription(project.description);
-    setTags(project.tags.join(", "));
-    setAccent(project.accent);
-  }, [isOpen, project]);
-
   if (!isOpen) {
     return null;
   }
 
-  const canSaveProject = title.trim().length > 0;
+  return (
+    <ProjectSettingsDialogContent
+      project={project}
+      onClose={onClose}
+      onUpdateProject={onUpdateProject}
+      onRequestDelete={onRequestDelete}
+    />
+  );
+}
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+function ProjectSettingsDialogContent({
+  project,
+  onClose,
+  onUpdateProject,
+  onRequestDelete,
+}: {
+  project: Project;
+  onClose: () => void;
+  onUpdateProject: (input: UpdateProjectInput) => void;
+  onRequestDelete: () => void;
+}) {
+  const [title, setTitle] = useState(project.title);
+  const [description, setDescription] = useState(project.description);
+  const [tags, setTags] = useState(project.tags.join(", "));
+  const [accent, setAccent] = useState<Project["accent"]>(project.accent);
+  const dialogRef = useDialogControls<HTMLFormElement>(true, onClose);
+
+  const canEditProject = project.status === "active";
+  const canSaveProject = canEditProject && title.trim().length > 0;
+
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canSaveProject) {
@@ -59,7 +70,10 @@ export function ProjectSettingsDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
       <form
         ref={dialogRef}
         onSubmit={handleSubmit}
@@ -90,10 +104,29 @@ export function ProjectSettingsDialog({
         </div>
 
         <div className="space-y-4 px-5 py-5">
-          <ProjectTextField label="Project name" value={title} onChange={setTitle} placeholder="Name this project" autoFocus />
-          <ProjectTextArea label="Summary" value={description} onChange={setDescription} placeholder="Optional" />
-          <ProjectTextField label="Tags" value={tags} onChange={setTags} placeholder="Optional, comma-separated" />
-          <ProjectAccentPicker value={accent} onChange={setAccent} />
+          <ProjectTextField
+            label="Project name"
+            value={title}
+            onChange={setTitle}
+            placeholder="Name this project"
+            autoFocus={canEditProject}
+            disabled={!canEditProject}
+          />
+          <ProjectTextArea
+            label="Summary"
+            value={description}
+            onChange={setDescription}
+            placeholder="Optional"
+            disabled={!canEditProject}
+          />
+          <ProjectTextField
+            label="Tags"
+            value={tags}
+            onChange={setTags}
+            placeholder="Optional, comma-separated"
+            disabled={!canEditProject}
+          />
+          <ProjectAccentPicker value={accent} onChange={setAccent} disabled={!canEditProject} />
         </div>
 
         <div className="flex flex-col gap-3 border-t border-[var(--color-border)] bg-[var(--color-app-bg)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

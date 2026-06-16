@@ -1,10 +1,12 @@
 import { X } from "lucide-react";
 import { clsx } from "clsx";
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useState } from "react";
+import type { SyntheticEvent } from "react";
 import type { TaskPriority } from "../../../../domain/workspace";
+import { toIsoDateString } from "../../../../domain/workspaceValues";
 import type { CreateTaskInput } from "../../../../stores/workspaceStore";
 import { useDialogControls } from "../../hooks/useDialogControls";
+import { taskPriorityOptions } from "../../workspaceConstants";
 import { parseTags } from "../../workspaceUtils";
 import { ProjectTextField } from "../ProjectFormFields";
 
@@ -17,29 +19,28 @@ export function CreateTaskDialog({
   onClose: () => void;
   onCreateTask: (input: CreateTaskInput) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("medium");
-  const [dueDate, setDueDate] = useState("");
-  const [tags, setTags] = useState("");
-  const dialogRef = useDialogControls<HTMLFormElement>(isOpen, onClose);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    setTitle("");
-    setPriority("medium");
-    setDueDate("");
-    setTags("");
-  }, [isOpen]);
-
   if (!isOpen) {
     return null;
   }
 
+  return <CreateTaskDialogContent onClose={onClose} onCreateTask={onCreateTask} />;
+}
+
+function CreateTaskDialogContent({
+  onClose,
+  onCreateTask,
+}: {
+  onClose: () => void;
+  onCreateTask: (input: CreateTaskInput) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState<TaskPriority>("medium");
+  const [dueDate, setDueDate] = useState("");
+  const [tags, setTags] = useState("");
+  const dialogRef = useDialogControls<HTMLFormElement>(true, onClose);
+
   const canCreateTask = title.trim().length > 0;
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canCreateTask) {
@@ -49,7 +50,7 @@ export function CreateTaskDialog({
     onCreateTask({
       title,
       priority,
-      dueDate: dueDate || null,
+      dueDate: dueDate ? toIsoDateString(dueDate) : null,
       tags: parseTags(tags),
     });
     setTitle("");
@@ -59,7 +60,10 @@ export function CreateTaskDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
       <form
         ref={dialogRef}
         onSubmit={handleSubmit}
@@ -90,11 +94,17 @@ export function CreateTaskDialog({
         </div>
 
         <div className="space-y-4 px-5 py-5">
-          <ProjectTextField label="Task title" value={title} onChange={setTitle} placeholder="Describe the next step" autoFocus />
+          <ProjectTextField
+            label="Task title"
+            value={title}
+            onChange={setTitle}
+            placeholder="Describe the next step"
+            autoFocus
+          />
           <fieldset>
             <legend className="text-[12px] font-semibold text-slate-700">Priority</legend>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(["low", "medium", "high", "urgent"] as TaskPriority[]).map((priorityOption) => (
+              {taskPriorityOptions.map((priorityOption) => (
                 <button
                   key={priorityOption}
                   type="button"

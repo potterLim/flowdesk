@@ -1,8 +1,22 @@
 import { CheckSquare, Clock3, FileText, NotebookText, Timer } from "lucide-react";
 import { clsx } from "clsx";
-import type { Note, Project, Task, TaskStatus, TimelineEvent, WorkSession, WorkspaceFile } from "../../../domain/workspace";
+import type {
+  Note,
+  NoteId,
+  Project,
+  Task,
+  TaskId,
+  TaskStatus,
+  TimelineEvent,
+  WorkSession,
+  WorkspaceFile,
+} from "../../../domain/workspace";
 import { EmptyState, PanelHeader } from "../components/WorkspacePrimitives";
-import { MarkdownReadingSurface, MetricPanel, SessionCard, TaskStack, TimelineStack } from "./WorkspaceViewPanels";
+import { MarkdownReadingSurface } from "./MarkdownReadingSurface";
+import { MetricPanel } from "./MetricPanel";
+import { SessionCard } from "./SessionCard";
+import { TaskStack } from "./TaskPanels";
+import { TimelineStack } from "./TimelinePanels";
 
 export function OverviewView({
   project,
@@ -21,6 +35,7 @@ export function OverviewView({
   onStartSession,
   onUpdateActiveSessionNotes,
   onEndSession,
+  onFlushWorkspacePersistence,
 }: {
   project: Project;
   notes: Note[];
@@ -30,14 +45,15 @@ export function OverviewView({
   timelineEvents: TimelineEvent[];
   selectedNote: Note | undefined;
   canEditProject: boolean;
-  onSelectNote: (noteId: string) => void;
+  onSelectNote: (noteId: NoteId) => void;
   onCreateNote: () => void;
   onCreateTask: () => void;
-  onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
-  onDeleteTask: (taskId: string) => void;
+  onUpdateTaskStatus: (taskId: TaskId, status: TaskStatus) => void;
+  onDeleteTask: (taskId: TaskId) => void;
   onStartSession: () => void;
   onUpdateActiveSessionNotes: (notes: string) => void;
   onEndSession: () => void;
+  onFlushWorkspacePersistence: () => void;
 }) {
   const completedTaskCount = tasks.filter((task) => task.status === "done").length;
   const activeSession = sessions.find((session) => session.endedAt === null);
@@ -47,10 +63,20 @@ export function OverviewView({
       <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-5">
         <div className="grid w-full max-w-full min-w-0 grid-cols-1 gap-3 2xl:grid-cols-5">
           <MetricPanel label="Notes" value={notes.length.toString()} detail="Markdown records" icon={NotebookText} />
-          <MetricPanel label="Tasks" value={`${completedTaskCount}/${tasks.length}`} detail="Completed" icon={CheckSquare} />
+          <MetricPanel
+            label="Tasks"
+            value={`${completedTaskCount}/${tasks.length}`}
+            detail="Completed"
+            icon={CheckSquare}
+          />
           <MetricPanel label="Sessions" value={sessions.length.toString()} detail="Tracked blocks" icon={Timer} />
           <MetricPanel label="Files" value={files.length.toString()} detail="Local assets" icon={FileText} />
-          <MetricPanel label="Timeline" value={timelineEvents.length.toString()} detail="Project events" icon={Clock3} />
+          <MetricPanel
+            label="Timeline"
+            value={timelineEvents.length.toString()}
+            detail="Project events"
+            icon={Clock3}
+          />
         </div>
 
         <div className="grid min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)] lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -75,7 +101,9 @@ export function OverviewView({
                         : "border-transparent hover:border-slate-200 hover:bg-[var(--color-surface)]",
                     )}
                   >
-                    <span className="block truncate text-[13px] font-semibold text-slate-900">{note.title || "Untitled note"}</span>
+                    <span className="block truncate text-[13px] font-semibold text-slate-900">
+                      {note.title || "Untitled note"}
+                    </span>
                     <span className="mt-1 block text-[12px] text-[var(--color-muted)]">{note.folder}</span>
                   </button>
                 ))
@@ -88,7 +116,11 @@ export function OverviewView({
             ) : (
               <EmptyState
                 title="No note selected"
-                detail={canEditProject ? "Create a note to start building the project record." : "Restore the project before adding new records."}
+                detail={
+                  canEditProject
+                    ? "Create a note to start building the project record."
+                    : "Restore the project before adding new records."
+                }
                 actionLabel={canEditProject ? "New Note" : undefined}
                 onAction={canEditProject ? onCreateNote : undefined}
               />
@@ -105,6 +137,7 @@ export function OverviewView({
           onStartSession={onStartSession}
           onUpdateActiveSessionNotes={onUpdateActiveSessionNotes}
           onEndSession={onEndSession}
+          onFlushWorkspacePersistence={onFlushWorkspacePersistence}
         />
         <TaskStack
           tasks={tasks.slice(0, 4)}

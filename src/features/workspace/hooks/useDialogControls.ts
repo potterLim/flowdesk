@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 
 function useRestoreFocus(isOpen: boolean): void {
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -88,8 +90,12 @@ export function useDialogControls<T extends HTMLElement>(isOpen: boolean, onClos
         return;
       }
 
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
+      const firstElement = focusableElements.at(0);
+      const lastElement = focusableElements.at(-1);
+
+      if (!firstElement || !lastElement) {
+        return;
+      }
 
       if (event.shiftKey && document.activeElement === firstElement) {
         event.preventDefault();

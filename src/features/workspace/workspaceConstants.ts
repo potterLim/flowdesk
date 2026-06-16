@@ -1,16 +1,8 @@
-import {
-  CheckSquare,
-  Clock3,
-  Download,
-  FileText,
-  NotebookText,
-  PanelLeft,
-  Timer,
-} from "lucide-react";
+import { CheckSquare, Clock3, Download, FileText, NotebookText, PanelLeft, Timer } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Project, Task, TaskPriority, TaskStatus, WorkspaceView } from "../../domain/workspace";
+import type { ProjectAccent, TaskPriority, TaskStatus, WorkspaceView } from "../../domain/workspace";
 
-export const viewItems: Array<{ id: WorkspaceView; label: string; icon: LucideIcon }> = [
+export const viewItems: { id: WorkspaceView; label: string; icon: LucideIcon }[] = [
   { id: "overview", label: "Overview", icon: PanelLeft },
   { id: "notes", label: "Notes", icon: NotebookText },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
@@ -20,7 +12,13 @@ export const viewItems: Array<{ id: WorkspaceView; label: string; icon: LucideIc
   { id: "exports", label: "Exports", icon: Download },
 ];
 
-export const accentClasses: Record<Project["accent"], string> = {
+export const projectAccentOptions = ["teal", "blue", "violet", "amber", "rose"] satisfies readonly ProjectAccent[];
+
+export const taskPriorityOptions = ["low", "medium", "high", "urgent"] satisfies readonly TaskPriority[];
+
+export const taskStatusOptions = ["todo", "in_progress", "done", "archived"] satisfies readonly TaskStatus[];
+
+export const accentClasses: Record<ProjectAccent, string> = {
   teal: "bg-[#00c7be] text-[#061f1e]",
   blue: "bg-[#0a84ff] text-[#06142a]",
   violet: "bg-[#bf5af2] text-[#1c0b2a]",

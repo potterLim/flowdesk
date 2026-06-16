@@ -1,7 +1,7 @@
 import type { WorkSession } from "../../../domain/workspace";
 import { formatDuration, getElapsedMinutes } from "../../../lib/date";
 import { EmptyState, PanelHeader } from "../components/WorkspacePrimitives";
-import { SessionCard } from "./WorkspaceViewPanels";
+import { SessionCard } from "./SessionCard";
 
 export function SessionsView({
   sessions,
@@ -9,12 +9,14 @@ export function SessionsView({
   onStartSession,
   onUpdateActiveSessionNotes,
   onEndSession,
+  onFlushWorkspacePersistence,
 }: {
   sessions: WorkSession[];
   canEditProject: boolean;
   onStartSession: () => void;
   onUpdateActiveSessionNotes: (notes: string) => void;
   onEndSession: () => void;
+  onFlushWorkspacePersistence: () => void;
 }) {
   const activeSession = sessions.find((session) => session.endedAt === null);
 
@@ -27,6 +29,7 @@ export function SessionsView({
         onStartSession={onStartSession}
         onUpdateActiveSessionNotes={onUpdateActiveSessionNotes}
         onEndSession={onEndSession}
+        onFlushWorkspacePersistence={onFlushWorkspacePersistence}
       />
       <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
         <PanelHeader title="Session History" detail="Actual work blocks over time" />
@@ -34,7 +37,11 @@ export function SessionsView({
           {sessions.length === 0 ? (
             <EmptyState
               title="No sessions yet"
-              detail={canEditProject ? "Start a focus session when work begins." : "Restore the project before tracking sessions."}
+              detail={
+                canEditProject
+                  ? "Start a focus session when work begins."
+                  : "Restore the project before tracking sessions."
+              }
               actionLabel={canEditProject ? "Start Session" : undefined}
               onAction={canEditProject ? onStartSession : undefined}
             />

@@ -1,6 +1,7 @@
 import type {
   Note,
   Project,
+  ProjectId,
   ReferenceRecord,
   Task,
   TimelineEvent,
@@ -20,7 +21,10 @@ export interface ProjectRecordSnapshot {
   timelineEvents: TimelineEvent[];
 }
 
-export function getProjectRecordSnapshot(snapshot: WorkspaceSnapshot, projectId: string): ProjectRecordSnapshot | null {
+export function getProjectRecordSnapshot(
+  snapshot: WorkspaceSnapshot,
+  projectId: ProjectId,
+): ProjectRecordSnapshot | null {
   const project = snapshot.projects.find((candidateProject) => candidateProject.id === projectId);
 
   if (!project) {
@@ -46,7 +50,9 @@ export function buildProjectRecordMarkdown(record: ProjectRecordSnapshot): strin
 
     return `- ${session.title}: ${duration} minutes`;
   });
-  const referenceLines = references.map((reference) => `- ${reference.title} (${reference.type}) - ${reference.source}`);
+  const referenceLines = references.map(
+    (reference) => `- ${reference.title} (${reference.type}) - ${reference.source}`,
+  );
   const fileLines = files.map((file) => `- ${file.name} (${file.fileType}, ${file.sizeLabel}, ${file.storageMode})`);
   const timelineLines = timelineEvents.map((event) => `- ${event.title}: ${event.description}`);
   const noteSections = notes.map((note) => `### ${note.title}\n\n${note.content || "_No content recorded._"}`);

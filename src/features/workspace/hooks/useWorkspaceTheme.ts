@@ -14,14 +14,8 @@ export function useWorkspaceTheme(themeMode: ThemeMode): void {
     applyTheme();
     window.localStorage.removeItem("flowdesk.theme");
 
-    if (typeof colorSchemeQuery.addEventListener === "function") {
-      colorSchemeQuery.addEventListener("change", applyTheme);
+    colorSchemeQuery.addEventListener("change", applyTheme);
 
-      return () => colorSchemeQuery.removeEventListener("change", applyTheme);
-    }
-
-    colorSchemeQuery.addListener(applyTheme);
-
-    return () => colorSchemeQuery.removeListener(applyTheme);
+    return () => colorSchemeQuery.removeEventListener("change", applyTheme);
   }, [themeMode]);
 }

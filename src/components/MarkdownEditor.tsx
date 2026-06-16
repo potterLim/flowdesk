@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
+  onBlur: () => void;
 }
 
 const flowdeskHighlightStyle = HighlightStyle.define([
@@ -29,8 +30,7 @@ const flowdeskEditorTheme = EditorView.theme({
     fontSize: "14px",
   },
   ".cm-scroller": {
-    fontFamily:
-      '"SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, Menlo, Monaco, Consolas, monospace',
+    fontFamily: '"SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, Menlo, Monaco, Consolas, monospace',
     lineHeight: "1.65",
   },
   ".cm-content": {
@@ -56,9 +56,11 @@ const flowdeskEditorTheme = EditorView.theme({
   },
 });
 
-export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
+export function MarkdownEditor({ value, onChange, onBlur }: MarkdownEditorProps) {
   const editorRootRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const initialValueRef = useRef(value);
+  const onBlurRef = useRef(onBlur);
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
@@ -66,12 +68,16 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
   }, [onChange]);
 
   useEffect(() => {
+    onBlurRef.current = onBlur;
+  }, [onBlur]);
+
+  useEffect(() => {
     if (!editorRootRef.current) {
       return undefined;
     }
 
     const state = EditorState.create({
-      doc: value,
+      doc: initialValueRef.current,
       extensions: [
         lineNumbers(),
         history(),
@@ -84,6 +90,11 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
           }
+        }),
+        EditorView.domEventHandlers({
+          blur: () => {
+            onBlurRef.current();
+          },
         }),
       ],
     });

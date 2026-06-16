@@ -81,8 +81,8 @@ export function EmptyState({
 }: {
   title: string;
   detail: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  actionLabel?: string | undefined;
+  onAction?: (() => void) | undefined;
 }) {
   return (
     <div className="flex h-full min-h-[240px] flex-col items-center justify-center text-center">

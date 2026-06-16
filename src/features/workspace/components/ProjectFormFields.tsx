@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
-import type { Project } from "../../../domain/workspace";
-import { accentClasses } from "../workspaceConstants";
+import type { ProjectAccent } from "../../../domain/workspace";
+import { accentClasses, projectAccentOptions } from "../workspaceConstants";
 
 export function ProjectTextField({
   label,
@@ -8,22 +8,28 @@ export function ProjectTextField({
   onChange,
   placeholder,
   autoFocus,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   autoFocus?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
       <span className="text-[12px] font-semibold text-slate-700">{label}</span>
       <input
         autoFocus={autoFocus}
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-1 h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 text-[14px] text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
+        className={clsx(
+          "mt-1 h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 text-[14px] text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]",
+          disabled && "cursor-not-allowed opacity-70",
+        )}
       />
     </label>
   );
@@ -34,21 +40,27 @@ export function ProjectTextArea({
   value,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
       <span className="text-[12px] font-semibold text-slate-700">{label}</span>
       <textarea
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         rows={3}
-        className="mt-1 w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-2 text-[14px] leading-6 text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]"
+        className={clsx(
+          "mt-1 w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-3 py-2 text-[14px] leading-6 text-[var(--color-ink)] outline-none transition placeholder:text-slate-400 focus:border-[var(--color-accent)] focus:ring-3 focus:ring-[var(--color-focus-ring)]",
+          disabled && "cursor-not-allowed opacity-70",
+        )}
       />
     </label>
   );
@@ -57,18 +69,21 @@ export function ProjectTextArea({
 export function ProjectAccentPicker({
   value,
   onChange,
+  disabled = false,
 }: {
-  value: Project["accent"];
-  onChange: (accent: Project["accent"]) => void;
+  value: ProjectAccent;
+  onChange: (accent: ProjectAccent) => void;
+  disabled?: boolean;
 }) {
   return (
     <fieldset>
       <legend className="text-[12px] font-semibold text-slate-700">Color</legend>
       <div className="mt-2 flex gap-2">
-        {(["teal", "blue", "violet", "amber", "rose"] as Project["accent"][]).map((accentOption) => (
+        {projectAccentOptions.map((accentOption) => (
           <button
             key={accentOption}
             type="button"
+            disabled={disabled}
             aria-label={`Use ${accentOption} project color`}
             aria-pressed={value === accentOption}
             onClick={() => onChange(accentOption)}
@@ -76,6 +91,7 @@ export function ProjectAccentPicker({
               "h-8 w-8 rounded-md border-2 transition",
               accentClasses[accentOption],
               value === accentOption ? "border-[var(--color-ink)]" : "border-transparent",
+              disabled && "cursor-not-allowed opacity-70",
             )}
           />
         ))}

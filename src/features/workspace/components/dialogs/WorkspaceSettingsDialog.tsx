@@ -2,11 +2,13 @@ import { Database, Download, FileText, Monitor, Moon, Sun, X } from "lucide-reac
 import { clsx } from "clsx";
 import { useId } from "react";
 import type { LucideIcon } from "lucide-react";
+import type { IsoDateTimeString } from "../../../../domain/workspace";
 import type { WorkspacePersistenceMode } from "../../../../lib/persistence/workspaceRepository";
 import type { PersistenceStatus } from "../../../../stores/workspaceStore";
 import { useDialogControls } from "../../hooks/useDialogControls";
 import type { DiagnosticsExportState, ThemeMode, WorkspaceBackupState } from "../../workspaceTypes";
-import { DiagnosticsStatusMessage, PersistenceStatusBadge, WorkspaceDataControls } from "../WorkspaceStatus";
+import { PersistenceStatusBadge, WorkspaceDataControls } from "../WorkspaceStatus";
+import { DiagnosticsStatusMessage } from "../WorkspaceStatusMessages";
 
 export function WorkspaceSettingsDialog({
   isOpen,
@@ -29,7 +31,7 @@ export function WorkspaceSettingsDialog({
   persistenceMode: WorkspacePersistenceMode;
   persistenceStatus: PersistenceStatus;
   persistenceError: string | null;
-  lastPersistedAt: string | null;
+  lastPersistedAt: IsoDateTimeString | null;
   workspaceBackupState: WorkspaceBackupState | null;
   diagnosticsExportState: DiagnosticsExportState | null;
   onChangeTheme: (themeMode: ThemeMode) => void;
@@ -49,7 +51,10 @@ export function WorkspaceSettingsDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
       <div
         ref={dialogRef}
         onMouseDown={(event) => event.stopPropagation()}
@@ -102,7 +107,8 @@ export function WorkspaceSettingsDialog({
               <div className="min-w-0 flex-1">
                 <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Local Data</h3>
                 <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
-                  FlowDesk keeps workspace records on this device. Save a JSON backup before moving machines or testing recovery.
+                  FlowDesk keeps workspace records on this device. Save a JSON backup before moving machines or testing
+                  recovery.
                 </p>
                 <div className="mt-3">
                   <PersistenceStatusBadge
@@ -129,7 +135,8 @@ export function WorkspaceSettingsDialog({
               <div className="min-w-0 flex-1">
                 <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Diagnostics</h3>
                 <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
-                  Export a support file with app version, platform, local storage paths, log folder, and database health.
+                  Export a support file with app version, platform, local storage paths, log folder, and database
+                  health.
                 </p>
                 <button
                   type="button"
@@ -153,7 +160,8 @@ export function WorkspaceSettingsDialog({
               <div className="min-w-0 flex-1">
                 <h3 className="text-[14px] font-semibold text-[var(--color-ink)]">Storage Recovery</h3>
                 <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
-                  If the local database cannot open, FlowDesk can move the current SQLite files to a recovery folder and start clean.
+                  If the local database cannot open, FlowDesk can move the current SQLite files to a recovery folder and
+                  start clean.
                 </p>
                 <button
                   type="button"
@@ -182,14 +190,8 @@ export function WorkspaceSettingsDialog({
   );
 }
 
-function ThemePreferenceGroup({
-  value,
-  onChange,
-}: {
-  value: ThemeMode;
-  onChange: (themeMode: ThemeMode) => void;
-}) {
-  const options: Array<{ value: ThemeMode; label: string; icon: LucideIcon }> = [
+function ThemePreferenceGroup({ value, onChange }: { value: ThemeMode; onChange: (themeMode: ThemeMode) => void }) {
+  const options: { value: ThemeMode; label: string; icon: LucideIcon }[] = [
     { value: "system", label: "System", icon: Monitor },
     { value: "light", label: "Light", icon: Sun },
     { value: "dark", label: "Dark", icon: Moon },

@@ -1,12 +1,6 @@
 import { Database } from "lucide-react";
 
-export function PersistenceAlert({
-  error,
-  onRequestRepair,
-}: {
-  error: string | null;
-  onRequestRepair: () => void;
-}) {
+export function PersistenceAlert({ error, onRequestRepair }: { error: string | null; onRequestRepair: () => void }) {
   return (
     <div
       className="mt-4 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800 sm:flex-row sm:items-start"

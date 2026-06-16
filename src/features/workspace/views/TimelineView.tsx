@@ -1,6 +1,6 @@
 import type { TimelineEvent } from "../../../domain/workspace";
 import { PanelHeader } from "../components/WorkspacePrimitives";
-import { TimelineList } from "./WorkspaceViewPanels";
+import { TimelineList } from "./TimelinePanels";
 
 export function TimelineView({ timelineEvents }: { timelineEvents: TimelineEvent[] }) {
   return (

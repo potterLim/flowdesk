@@ -1,7 +1,7 @@
-import type { Task, TaskStatus } from "../../../domain/workspace";
+import type { Task, TaskId, TaskStatus } from "../../../domain/workspace";
 import { EmptyState, PanelHeader } from "../components/WorkspacePrimitives";
 import { taskStatusLabels } from "../workspaceConstants";
-import { TaskCard } from "./WorkspaceViewPanels";
+import { TaskCard } from "./TaskPanels";
 
 export function TasksView({
   tasks,
@@ -13,16 +13,22 @@ export function TasksView({
   tasks: Task[];
   canEditProject: boolean;
   onCreateTask: () => void;
-  onUpdateTaskStatus: (taskId: string, status: TaskStatus) => void;
-  onDeleteTask: (taskId: string) => void;
+  onUpdateTaskStatus: (taskId: TaskId, status: TaskStatus) => void;
+  onDeleteTask: (taskId: TaskId) => void;
 }) {
   const groupedStatuses: TaskStatus[] = ["todo", "in_progress", "done", "archived"];
 
   return (
     <div className="grid h-auto min-h-0 grid-cols-1 gap-4 pt-5 md:grid-cols-2 xl:h-full xl:grid-cols-4">
       {groupedStatuses.map((status) => (
-        <section key={status} className="min-h-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
-          <PanelHeader title={taskStatusLabels[status]} detail={`${tasks.filter((task) => task.status === status).length} tasks`} />
+        <section
+          key={status}
+          className="min-h-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]"
+        >
+          <PanelHeader
+            title={taskStatusLabels[status]}
+            detail={`${tasks.filter((task) => task.status === status).length} tasks`}
+          />
           <div className="space-y-3 p-3">
             {tasks.filter((task) => task.status === status).length === 0 ? (
               <EmptyState

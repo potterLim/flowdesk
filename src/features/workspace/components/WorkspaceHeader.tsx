@@ -1,4 +1,15 @@
-import { Archive, ArchiveRestore, Download, ListChecks, NotebookText, Pin, Play, Settings2, Square, Tags } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Download,
+  ListChecks,
+  NotebookText,
+  Pin,
+  Play,
+  Settings2,
+  Square,
+  Tags,
+} from "lucide-react";
 import { clsx } from "clsx";
 import type { Project, WorkspaceView } from "../../../domain/workspace";
 import { formatDateTime } from "../../../lib/date";
@@ -47,7 +58,9 @@ export function WorkspaceHeader({
               {project.icon}
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="max-w-full truncate text-[20px] font-semibold tracking-normal text-slate-950 sm:text-[22px]">{project.title}</h2>
+              <h2 className="max-w-full truncate text-[20px] font-semibold tracking-normal text-slate-950 sm:text-[22px]">
+                {project.title}
+              </h2>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -64,8 +77,8 @@ export function WorkspaceHeader({
           </div>
         </div>
         <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 2xl:w-auto 2xl:shrink-0">
-          {canEditProject && (
-            activeSessionLabel ? (
+          {canEditProject &&
+            (activeSessionLabel ? (
               <button
                 type="button"
                 aria-label="End Session"
@@ -76,7 +89,9 @@ export function WorkspaceHeader({
               >
                 <Square size={14} />
                 <span className="hidden sm:inline">End Session</span>
-                <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[11px] leading-none text-red-700 sm:ml-0">{activeSessionLabel}</span>
+                <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[11px] leading-none text-red-700 sm:ml-0">
+                  {activeSessionLabel}
+                </span>
               </button>
             ) : (
               <button
@@ -90,9 +105,10 @@ export function WorkspaceHeader({
                 <Play size={14} />
                 <span className="hidden sm:inline">Start Session</span>
               </button>
-            )
+            ))}
+          {canEditProject && (
+            <ActionButton icon={NotebookText} label="New Note" shortcut="Command/Ctrl+N" onClick={onCreateNote} />
           )}
-          {canEditProject && <ActionButton icon={NotebookText} label="New Note" shortcut="Command/Ctrl+N" onClick={onCreateNote} />}
           {canEditProject && <ActionButton icon={ListChecks} label="New Task" onClick={onCreateTask} />}
           <ActionButton icon={Download} label="Export" shortcut="Command/Ctrl+E" onClick={onPrepareMarkdownExport} />
           {project.status === "active" ? (
@@ -100,13 +116,15 @@ export function WorkspaceHeader({
           ) : (
             <ActionButton icon={ArchiveRestore} label="Restore" onClick={onRestoreProject} />
           )}
-          <IconButton
-            label={project.isPinned ? "Unpin project" : "Pin project"}
-            icon={Pin}
-            isActive={project.isPinned}
-            size="md"
-            onClick={onTogglePinned}
-          />
+          {project.status === "active" && (
+            <IconButton
+              label={project.isPinned ? "Unpin project" : "Pin project"}
+              icon={Pin}
+              isActive={project.isPinned}
+              size="md"
+              onClick={onTogglePinned}
+            />
+          )}
           <IconButton label="Project settings" icon={Settings2} size="md" onClick={onOpenSettings} />
         </div>
       </div>
@@ -114,7 +132,13 @@ export function WorkspaceHeader({
   );
 }
 
-export function ViewTabs({ activeView, onSelectView }: { activeView: WorkspaceView; onSelectView: (view: WorkspaceView) => void }) {
+export function ViewTabs({
+  activeView,
+  onSelectView,
+}: {
+  activeView: WorkspaceView;
+  onSelectView: (view: WorkspaceView) => void;
+}) {
   return (
     <nav
       aria-label="Workspace views"

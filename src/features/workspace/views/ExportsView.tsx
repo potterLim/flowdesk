@@ -109,7 +109,11 @@ function ExportStatusMessage({
 
   if (exportSaveState.status === "saved") {
     return (
-      <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2" role="status" aria-live="polite">
+      <div
+        className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2"
+        role="status"
+        aria-live="polite"
+      >
         <p className="truncate text-[12px] font-semibold text-emerald-800">
           Saved {formatExportFormat(exportSaveState.format)} record.
         </p>

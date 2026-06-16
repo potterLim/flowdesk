@@ -1,12 +1,12 @@
 import { CheckSquare, Clock3, Database, Download, NotebookText, PanelLeft, Plus, Timer, Upload } from "lucide-react";
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { SyntheticEvent } from "react";
 import type { Project } from "../../../domain/workspace";
 import type { CreateProjectInput } from "../../../stores/workspaceStore";
 import { parseTags } from "../workspaceUtils";
 import type { WorkspaceBackupState } from "../workspaceTypes";
 import { ProjectAccentPicker, ProjectTextArea, ProjectTextField } from "./ProjectFormFields";
-import { WorkspaceBackupStatusMessage } from "./WorkspaceStatus";
+import { WorkspaceBackupStatusMessage } from "./WorkspaceStatusMessages";
 
 export function WorkspaceBootView() {
   return (
@@ -49,7 +49,7 @@ export function FirstRunView({
   const [accent, setAccent] = useState<Project["accent"]>("teal");
   const canCreateProject = title.trim().length > 0;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canCreateProject) {
@@ -93,18 +93,15 @@ export function FirstRunView({
               placeholder="Name this project"
               autoFocus
             />
-            <ProjectTextArea
-              label="Summary"
-              value={description}
-              onChange={setDescription}
-              placeholder="Optional"
-            />
+            <ProjectTextArea label="Summary" value={description} onChange={setDescription} placeholder="Optional" />
             <ProjectTextField label="Tags" value={tags} onChange={setTags} placeholder="Optional, comma-separated" />
             <ProjectAccentPicker value={accent} onChange={setAccent} />
           </div>
 
           <div className="mt-5 flex items-center justify-between gap-3">
-            <p className="text-[12px] leading-5 text-[var(--color-muted)]">Private by default. Stored on this device.</p>
+            <p className="text-[12px] leading-5 text-[var(--color-muted)]">
+              Private by default. Stored on this device.
+            </p>
             <button
               type="submit"
               disabled={!canCreateProject}
@@ -129,7 +126,10 @@ export function FirstRunView({
               const Icon = item.icon;
 
               return (
-                <div key={item.title} className="flex gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-app-bg)] p-3">
+                <div
+                  key={item.title}
+                  className="flex gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-app-bg)] p-3"
+                >
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--color-selection)] text-[var(--color-accent)]">
                     <Icon size={15} />
                   </span>
@@ -148,7 +148,9 @@ export function FirstRunView({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-semibold text-[var(--color-ink)]">Restore existing work</p>
-                <p className="mt-0.5 text-[12px] leading-5 text-[var(--color-muted)]">Open a FlowDesk backup before creating a new workspace.</p>
+                <p className="mt-0.5 text-[12px] leading-5 text-[var(--color-muted)]">
+                  Open a FlowDesk backup before creating a new workspace.
+                </p>
               </div>
             </div>
             <button

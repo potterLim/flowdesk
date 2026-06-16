@@ -1,10 +1,10 @@
 import { lazy, Suspense } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { clsx } from "clsx";
-import type { Note } from "../../../domain/workspace";
+import type { Note, NoteId } from "../../../domain/workspace";
 import { formatShortDate } from "../../../lib/date";
 import { EmptyState, PanelHeader } from "../components/WorkspacePrimitives";
-import { MarkdownReadingSurface } from "./WorkspaceViewPanels";
+import { MarkdownReadingSurface } from "./MarkdownReadingSurface";
 
 const MarkdownEditor = lazy(() =>
   import("../../../components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })),
@@ -17,18 +17,20 @@ export function NotesView({
   onSelectNote,
   onUpdateTitle,
   onUpdateContent,
+  onCommitPendingChanges,
   onCreateNote,
   onDeleteNote,
   canEditProject,
 }: {
   notes: Note[];
-  selectedNoteId: string;
+  selectedNoteId: NoteId | null;
   selectedNoteContent: string;
-  onSelectNote: (noteId: string) => void;
+  onSelectNote: (noteId: NoteId) => void;
   onUpdateTitle: (title: string) => void;
   onUpdateContent: (content: string) => void;
+  onCommitPendingChanges: () => void;
   onCreateNote: () => void;
-  onDeleteNote: (noteId: string) => void;
+  onDeleteNote: (noteId: NoteId) => void;
   canEditProject: boolean;
 }) {
   const selectedNote = notes.find((note) => note.id === selectedNoteId);
@@ -41,7 +43,9 @@ export function NotesView({
           {notes.length === 0 ? (
             <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-4 text-center">
               <p className="text-[13px] font-semibold text-slate-900">No notes yet</p>
-              <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">Create the first durable record for this project.</p>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
+                Create the first durable record for this project.
+              </p>
               {canEditProject && (
                 <button
                   type="button"
@@ -64,7 +68,9 @@ export function NotesView({
                   note.id === selectedNoteId ? "bg-[var(--color-selection)]" : "hover:bg-[var(--color-surface)]",
                 )}
               >
-                <span className="block truncate text-[13px] font-semibold text-slate-900">{note.title || "Untitled note"}</span>
+                <span className="block truncate text-[13px] font-semibold text-slate-900">
+                  {note.title || "Untitled note"}
+                </span>
                 <span className="mt-1 block text-[12px] text-[var(--color-muted)]">
                   {note.folder} · {formatShortDate(note.updatedAt)}
                 </span>
@@ -81,6 +87,7 @@ export function NotesView({
               <input
                 value={selectedNote.title}
                 onChange={(event) => onUpdateTitle(event.target.value)}
+                onBlur={onCommitPendingChanges}
                 readOnly={!canEditProject}
                 className="h-6 w-full min-w-0 rounded-sm bg-transparent text-[13px] font-semibold text-slate-950 outline-none focus:bg-[var(--color-surface-subtle)] read-only:cursor-default"
                 aria-label="Note title"
@@ -117,7 +124,7 @@ export function NotesView({
               </div>
             }
           >
-            <MarkdownEditor value={selectedNoteContent} onChange={onUpdateContent} />
+            <MarkdownEditor value={selectedNoteContent} onChange={onUpdateContent} onBlur={onCommitPendingChanges} />
           </Suspense>
         ) : selectedNote ? (
           <div className="min-h-0 overflow-y-auto p-5">
@@ -126,7 +133,11 @@ export function NotesView({
         ) : (
           <EmptyState
             title="No note selected"
-            detail={canEditProject ? "Create a note to open the Markdown editor." : "Restore the project before adding new notes."}
+            detail={
+              canEditProject
+                ? "Create a note to open the Markdown editor."
+                : "Restore the project before adding new notes."
+            }
           />
         )}
       </section>
@@ -142,7 +153,10 @@ export function NotesView({
           {selectedNote ? (
             <MarkdownReadingSurface content={selectedNoteContent} />
           ) : (
-            <EmptyState title="Preview is empty" detail="The rendered note preview appears here after a note is created." />
+            <EmptyState
+              title="Preview is empty"
+              detail="The rendered note preview appears here after a note is created."
+            />
           )}
         </div>
       </section>

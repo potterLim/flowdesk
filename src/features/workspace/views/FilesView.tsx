@@ -1,7 +1,7 @@
 import { ExternalLink, FileText, FolderOpen, Trash2, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
-import type { WorkspaceFile } from "../../../domain/workspace";
+import type { WorkspaceFile, WorkspaceFileId, WorkspaceFilePath } from "../../../domain/workspace";
 import { formatDateTime, formatShortDate } from "../../../lib/date";
 import { EmptyState, PanelHeader } from "../components/WorkspacePrimitives";
 
@@ -18,20 +18,11 @@ export function FilesView({
   canEditProject: boolean;
   fileActionError: string | null;
   onImportFiles: () => void;
-  onOpenFile: (path: string) => void;
-  onRevealFile: (path: string) => void;
-  onDeleteFile: (fileId: string) => void | Promise<void>;
+  onOpenFile: (path: WorkspaceFilePath) => void;
+  onRevealFile: (path: WorkspaceFilePath) => void;
+  onDeleteFile: (fileId: WorkspaceFileId) => void;
 }) {
-  const [selectedFileId, setSelectedFileId] = useState("");
-
-  useEffect(() => {
-    if (files.some((file) => file.id === selectedFileId)) {
-      return;
-    }
-
-    setSelectedFileId(files[0]?.id ?? "");
-  }, [files, selectedFileId]);
-
+  const [selectedFileId, setSelectedFileId] = useState<WorkspaceFileId | null>(null);
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? files[0];
   const selectedFileStorageLabel = selectedFile?.storageMode === "managed" ? "Managed copy" : "Linked file";
 
@@ -58,14 +49,21 @@ export function FilesView({
         </div>
         <div className="min-h-0 space-y-2 overflow-y-auto p-3">
           {fileActionError && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-semibold leading-5 text-red-700" role="alert">
+            <p
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-semibold leading-5 text-red-700"
+              role="alert"
+            >
               {fileActionError}
             </p>
           )}
           {files.length === 0 ? (
             <EmptyState
               title="No files imported"
-              detail={canEditProject ? "Attach project PDFs, images, datasets, text files, or Markdown records." : "Restore the project before importing files."}
+              detail={
+                canEditProject
+                  ? "Attach project PDFs, images, datasets, text files, or Markdown records."
+                  : "Restore the project before importing files."
+              }
               actionLabel={canEditProject ? "Import Files" : undefined}
               onAction={canEditProject ? onImportFiles : undefined}
             />
@@ -89,7 +87,8 @@ export function FilesView({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-semibold text-[var(--color-ink)]">{file.name}</span>
                   <span className="mt-0.5 block truncate text-[12px] text-[var(--color-muted)]">
-                    {file.fileType.toUpperCase()} · {file.sizeLabel} · {file.storageMode === "managed" ? "Managed" : "Linked"}
+                    {file.fileType.toUpperCase()} · {file.sizeLabel} ·{" "}
+                    {file.storageMode === "managed" ? "Managed" : "Linked"}
                   </span>
                 </span>
               </button>
@@ -99,7 +98,10 @@ export function FilesView({
       </section>
 
       <section className="min-h-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-soft)]">
-        <PanelHeader title="File Details" detail={selectedFile ? formatShortDate(selectedFile.importedAt) : "Project attachment"} />
+        <PanelHeader
+          title="File Details"
+          detail={selectedFile ? formatShortDate(selectedFile.importedAt) : "Project attachment"}
+        />
         <div className="min-h-0 overflow-y-auto p-5">
           {selectedFile ? (
             <div className="max-w-3xl">
@@ -134,12 +136,16 @@ export function FilesView({
                 </div>
                 <div className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)]">
                   <dt className="font-semibold text-[var(--color-muted)]">Location</dt>
-                  <dd className="min-w-0 truncate text-[var(--color-ink)]" title={selectedFile.path}>{selectedFile.path}</dd>
+                  <dd className="min-w-0 truncate text-[var(--color-ink)]" title={selectedFile.path}>
+                    {selectedFile.path}
+                  </dd>
                 </div>
                 {selectedFile.sourcePath && (
                   <div className="grid gap-1 sm:grid-cols-[120px_minmax(0,1fr)]">
                     <dt className="font-semibold text-[var(--color-muted)]">Original</dt>
-                    <dd className="min-w-0 truncate text-[var(--color-ink)]" title={selectedFile.sourcePath}>{selectedFile.sourcePath}</dd>
+                    <dd className="min-w-0 truncate text-[var(--color-ink)]" title={selectedFile.sourcePath}>
+                      {selectedFile.sourcePath}
+                    </dd>
                   </div>
                 )}
               </dl>
@@ -163,9 +169,7 @@ export function FilesView({
                 {canEditProject && (
                   <button
                     type="button"
-                    onClick={() => {
-                      void onDeleteFile(selectedFile.id);
-                    }}
+                    onClick={() => onDeleteFile(selectedFile.id)}
                     className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-[13px] font-semibold whitespace-nowrap text-red-700 transition hover:bg-red-100"
                   >
                     <Trash2 size={14} />
@@ -175,7 +179,10 @@ export function FilesView({
               </div>
             </div>
           ) : (
-            <EmptyState title="No file selected" detail="Imported files appear here with their local path, size, and system actions." />
+            <EmptyState
+              title="No file selected"
+              detail="Imported files appear here with their local path, size, and system actions."
+            />
           )}
         </div>
       </section>

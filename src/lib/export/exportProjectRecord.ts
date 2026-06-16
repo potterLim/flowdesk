@@ -1,9 +1,10 @@
+import { type FileSystemPath, toFileSystemPath } from "../platform/fileSystemPath";
 import { isTauriRuntime } from "../platform/tauriRuntime";
 
 export type ExportFormat = "markdown" | "json";
 
 export type ExportSaveResult =
-  | { status: "saved"; path: string }
+  | { status: "saved"; path: FileSystemPath }
   | { status: "downloaded"; fileName: string }
   | { status: "cancelled" };
 
@@ -18,9 +19,7 @@ function getExportExtension(format: ExportFormat): "md" | "json" {
 }
 
 function getExportFilter(format: ExportFormat): { name: string; extensions: string[] } {
-  return format === "markdown"
-    ? { name: "Markdown", extensions: ["md"] }
-    : { name: "JSON", extensions: ["json"] };
+  return format === "markdown" ? { name: "Markdown", extensions: ["md"] } : { name: "JSON", extensions: ["json"] };
 }
 
 function slugifyFileName(value: string): string {
@@ -78,10 +77,10 @@ export async function saveProjectRecord({
 
   await writeTextFile(selectedPath, content);
 
-  return { status: "saved", path: selectedPath };
+  return { status: "saved", path: toFileSystemPath(selectedPath) };
 }
 
-export async function revealSavedProjectRecord(path: string): Promise<void> {
+export async function revealSavedProjectRecord(path: FileSystemPath): Promise<void> {
   if (!isTauriRuntime()) {
     return;
   }

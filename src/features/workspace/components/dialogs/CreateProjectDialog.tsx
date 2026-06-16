@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useState } from "react";
+import type { SyntheticEvent } from "react";
 import type { Project } from "../../../../domain/workspace";
 import type { CreateProjectInput } from "../../../../stores/workspaceStore";
 import { useDialogControls } from "../../hooks/useDialogControls";
@@ -16,30 +16,29 @@ export function CreateProjectDialog({
   onClose: () => void;
   onCreateProject: (input: CreateProjectInput) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [tags, setTags] = useState("");
-  const [accent, setAccent] = useState<Project["accent"]>("teal");
-  const dialogRef = useDialogControls<HTMLFormElement>(isOpen, onClose);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    setTitle("");
-    setDescription("");
-    setTags("");
-    setAccent("teal");
-  }, [isOpen]);
-
   if (!isOpen) {
     return null;
   }
 
+  return <CreateProjectDialogContent onClose={onClose} onCreateProject={onCreateProject} />;
+}
+
+function CreateProjectDialogContent({
+  onClose,
+  onCreateProject,
+}: {
+  onClose: () => void;
+  onCreateProject: (input: CreateProjectInput) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [accent, setAccent] = useState<Project["accent"]>("teal");
+  const dialogRef = useDialogControls<HTMLFormElement>(true, onClose);
+
   const canCreateProject = title.trim().length > 0;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canCreateProject) {
@@ -59,7 +58,10 @@ export function CreateProjectDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/24 px-4 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
       <form
         ref={dialogRef}
         onSubmit={handleSubmit}
@@ -90,7 +92,13 @@ export function CreateProjectDialog({
         </div>
 
         <div className="space-y-4 px-5 py-5">
-          <ProjectTextField label="Project name" value={title} onChange={setTitle} placeholder="Name this project" autoFocus />
+          <ProjectTextField
+            label="Project name"
+            value={title}
+            onChange={setTitle}
+            placeholder="Name this project"
+            autoFocus
+          />
           <ProjectTextArea label="Summary" value={description} onChange={setDescription} placeholder="Optional" />
           <ProjectTextField label="Tags" value={tags} onChange={setTags} placeholder="Optional, comma-separated" />
           <ProjectAccentPicker value={accent} onChange={setAccent} />

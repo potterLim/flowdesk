@@ -1,12 +1,13 @@
-import type { WorkspaceFile, WorkspaceFileType } from "../../domain/workspace";
+import type { WorkspaceFile, WorkspaceFilePath, WorkspaceFileType } from "../../domain/workspace";
+import { toWorkspaceFilePath } from "../../domain/workspaceValues";
 import { isTauriRuntime } from "./tauriRuntime";
 
 export interface SelectedWorkspaceFile {
   name: string;
   fileType: WorkspaceFileType;
   sizeLabel: string;
-  path: string;
-  sourcePath: string | null;
+  path: WorkspaceFilePath;
+  sourcePath: WorkspaceFilePath | null;
   storageMode: "managed" | "linked";
 }
 
@@ -82,7 +83,13 @@ export function formatFileSize(sizeInBytes: number | null | undefined): string {
 
   const sizeInMegabytes = sizeInKilobytes / 1024;
 
-  return `${sizeInMegabytes.toFixed(sizeInMegabytes >= 100 ? 0 : 1)} MB`;
+  if (sizeInMegabytes < 1024) {
+    return `${sizeInMegabytes.toFixed(sizeInMegabytes >= 100 ? 0 : 1)} MB`;
+  }
+
+  const sizeInGigabytes = sizeInMegabytes / 1024;
+
+  return `${sizeInGigabytes.toFixed(sizeInGigabytes >= 100 ? 0 : 1)} GB`;
 }
 
 function selectBrowserFiles(): Promise<SelectedWorkspaceFile[]> {
@@ -93,14 +100,16 @@ function selectBrowserFiles(): Promise<SelectedWorkspaceFile[]> {
     input.multiple = true;
     input.accept = supportedExtensions.map((extension) => `.${extension}`).join(",");
     input.onchange = () => {
-      const files = Array.from(input.files ?? []).map((file) => ({
-        name: file.name,
-        fileType: getWorkspaceFileType(file.name),
-        sizeLabel: formatFileSize(file.size),
-        path: file.name,
-        sourcePath: null,
-        storageMode: "linked" as const,
-      }));
+      const files = Array.from(input.files ?? []).map(
+        (file): SelectedWorkspaceFile => ({
+          name: file.name,
+          fileType: getWorkspaceFileType(file.name),
+          sizeLabel: formatFileSize(file.size),
+          path: toWorkspaceFilePath(file.name),
+          sourcePath: null,
+          storageMode: "linked",
+        }),
+      );
 
       input.remove();
       resolve(files);
@@ -142,7 +151,7 @@ export async function selectWorkspaceFiles(): Promise<SelectedWorkspaceFile[]> {
   const appDataPath = await appDataDir();
 
   return Promise.all(
-    selectedPaths.map(async (path) => {
+    selectedPaths.map(async (path): Promise<SelectedWorkspaceFile> => {
       const name = getFileName(path);
       const managedRelativePath = getManagedRelativePath(name);
 
@@ -157,15 +166,15 @@ export async function selectWorkspaceFiles(): Promise<SelectedWorkspaceFile[]> {
         name,
         fileType: getWorkspaceFileType(name),
         sizeLabel: formatFileSize(fileInfo?.size),
-        path: managedPath,
-        sourcePath: path,
-        storageMode: "managed" as const,
+        path: toWorkspaceFilePath(managedPath),
+        sourcePath: toWorkspaceFilePath(path),
+        storageMode: "managed",
       };
     }),
   );
 }
 
-export async function revealWorkspaceFile(path: string): Promise<void> {
+export async function revealWorkspaceFile(path: WorkspaceFilePath): Promise<void> {
   if (!isTauriRuntime()) {
     return;
   }
@@ -175,7 +184,7 @@ export async function revealWorkspaceFile(path: string): Promise<void> {
   await revealItemInDir(path);
 }
 
-export async function openWorkspaceFile(path: string): Promise<void> {
+export async function openWorkspaceFile(path: WorkspaceFilePath): Promise<void> {
   if (!isTauriRuntime()) {
     return;
   }

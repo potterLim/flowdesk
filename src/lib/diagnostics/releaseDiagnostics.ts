@@ -1,7 +1,8 @@
+import { type FileSystemPath, toFileSystemPath } from "../platform/fileSystemPath";
 import { isTauriRuntime } from "../platform/tauriRuntime";
 
 export type DiagnosticsSaveResult =
-  | { status: "saved"; path: string }
+  | { status: "saved"; path: FileSystemPath }
   | { status: "downloaded"; fileName: string }
   | { status: "cancelled" };
 
@@ -126,5 +127,5 @@ export async function saveReleaseDiagnostics(): Promise<DiagnosticsSaveResult> {
 
   await writeTextFile(selectedPath, content);
 
-  return { status: "saved", path: selectedPath };
+  return { status: "saved", path: toFileSystemPath(selectedPath) };
 }

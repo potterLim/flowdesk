@@ -1,5 +1,5 @@
 import { Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { KeyboardEvent } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -52,9 +52,17 @@ export function CommandPalette({
   commands: CommandPaletteItem[];
   onClose: () => void;
 }) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return <CommandPaletteContent commands={commands} onClose={onClose} />;
+}
+
+function CommandPaletteContent({ commands, onClose }: { commands: CommandPaletteItem[]; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const dialogRef = useDialogControls<HTMLDivElement>(isOpen, onClose);
+  const dialogRef = useDialogControls<HTMLDivElement>(true, onClose);
   const filteredCommands = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -72,29 +80,9 @@ export function CommandPalette({
       .sort((first, second) => first.score - second.score || first.index - second.index)
       .map((item) => item.command);
   }, [commands, query]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    setQuery("");
-    setActiveIndex(0);
-  }, [isOpen]);
-
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [query]);
-
-  useEffect(() => {
-    setActiveIndex((index) => Math.min(index, Math.max(filteredCommands.length - 1, 0)));
-  }, [filteredCommands.length]);
-
-  if (!isOpen) {
-    return null;
-  }
-
-  const activeCommand = filteredCommands[activeIndex];
+  const maxActiveIndex = Math.max(filteredCommands.length - 1, 0);
+  const boundedActiveIndex = Math.min(activeIndex, maxActiveIndex);
+  const activeCommand = filteredCommands[boundedActiveIndex];
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
@@ -117,7 +105,10 @@ export function CommandPalette({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/24 px-4 pt-[12vh] backdrop-blur-sm" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/24 px-4 pt-[12vh] backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -131,7 +122,10 @@ export function CommandPalette({
           <input
             autoFocus
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActiveIndex(0);
+            }}
             onKeyDown={handleKeyDown}
             aria-label="Search commands"
             role="combobox"
@@ -157,11 +151,13 @@ export function CommandPalette({
 
         <div id="flowdesk-command-results" role="listbox" className="max-h-[420px] overflow-y-auto p-2">
           {filteredCommands.length === 0 ? (
-            <div className="px-3 py-8 text-center text-[13px] font-medium text-[var(--color-muted)]">No matching commands</div>
+            <div className="px-3 py-8 text-center text-[13px] font-medium text-[var(--color-muted)]">
+              No matching commands
+            </div>
           ) : (
             filteredCommands.map((command, index) => {
               const Icon = command.icon;
-              const isActive = index === activeIndex;
+              const isActive = index === boundedActiveIndex;
 
               return (
                 <button
@@ -190,8 +186,12 @@ export function CommandPalette({
                     <Icon size={15} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-semibold text-[var(--color-ink)]">{command.label}</span>
-                    <span className="mt-0.5 block truncate text-[12px] text-[var(--color-muted)]">{command.detail}</span>
+                    <span className="block truncate text-[13px] font-semibold text-[var(--color-ink)]">
+                      {command.label}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[var(--color-muted)]">
+                      {command.detail}
+                    </span>
                   </span>
                   {command.shortcut && (
                     <span className="shrink-0 rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-muted)]">
