@@ -3,13 +3,15 @@ mod diagnostics;
 mod menu;
 mod runtime;
 
-use database::{execute_workspace_transaction, get_workspace_database_url, reset_workspace_database};
+use database::{
+    execute_workspace_transaction, get_workspace_database_url, reset_workspace_database,
+};
 use diagnostics::get_release_diagnostics;
 use menu::{build_flowdesk_menu, APP_MENU_COMMANDS, FLOWDESK_MENU_EVENT};
 use runtime::install_panic_hook;
-use tauri::{Emitter, Manager};
 #[cfg(target_os = "macos")]
 use tauri::WindowEvent;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

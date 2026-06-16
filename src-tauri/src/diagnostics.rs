@@ -1,4 +1,4 @@
-use crate::database::{resolve_database_path, sqlite_connect_options};
+use crate::database::{create_sqlite_connect_options, resolve_database_path};
 use serde::Serialize;
 use sqlx::{Connection, SqliteConnection};
 use std::{env, path::Path};
@@ -32,7 +32,8 @@ pub(crate) async fn get_release_diagnostics(
     app: tauri::AppHandle,
     database_url: String,
 ) -> Result<ReleaseDiagnostics, String> {
-    let database_path = resolve_database_path(&app, &database_url)?;
+    let database_path =
+        resolve_database_path(&app, &database_url).map_err(|error| error.to_string())?;
     let database_exists = database_path.exists();
     let database_integrity = check_database_integrity(&database_path).await;
 
@@ -46,9 +47,9 @@ pub(crate) async fn get_release_diagnostics(
         },
         operating_system: env::consts::OS,
         architecture: env::consts::ARCH,
-        app_config_dir: path_to_string(app.path().app_config_dir()),
-        app_data_dir: path_to_string(app.path().app_data_dir()),
-        app_log_dir: path_to_string(app.path().app_log_dir()),
+        app_config_dir: format_tauri_path(app.path().app_config_dir()),
+        app_data_dir: format_tauri_path(app.path().app_data_dir()),
+        app_log_dir: format_tauri_path(app.path().app_log_dir()),
         database_path: database_path.to_string_lossy().into_owned(),
         database_exists,
         database_integrity,
@@ -60,7 +61,7 @@ async fn check_database_integrity(database_path: &Path) -> DatabaseIntegrity {
         return DatabaseIntegrity::NotFound;
     }
 
-    let options = sqlite_connect_options(database_path);
+    let options = create_sqlite_connect_options(database_path);
     let mut connection = match SqliteConnection::connect_with(&options).await {
         Ok(connection) => connection,
         Err(error) => return DatabaseIntegrity::Error(error.to_string()),
@@ -76,6 +77,6 @@ async fn check_database_integrity(database_path: &Path) -> DatabaseIntegrity {
     }
 }
 
-fn path_to_string(path: tauri::Result<std::path::PathBuf>) -> Option<String> {
+fn format_tauri_path(path: tauri::Result<std::path::PathBuf>) -> Option<String> {
     path.ok().map(|path| path.to_string_lossy().into_owned())
 }

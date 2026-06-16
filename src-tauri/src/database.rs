@@ -1,9 +1,12 @@
-use serde::Deserialize;
-use serde_json::Value;
+mod error;
+mod statements;
+
+pub(crate) use error::{DatabaseError, DatabaseResult};
+pub(crate) use statements::SqliteStatement;
+
 use sqlx::{
-    query::Query,
-    sqlite::{SqliteArguments, SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
-    Connection, Sqlite, SqliteConnection,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
+    Connection, SqliteConnection,
 };
 use std::{
     env, fs,
@@ -11,13 +14,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::Manager;
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct SqliteStatement {
-    query: String,
-    #[serde(default)]
-    values: Vec<Value>,
-}
 
 #[tauri::command]
 pub(crate) fn get_workspace_database_url() -> Result<String, String> {
@@ -38,79 +34,83 @@ pub(crate) async fn execute_workspace_transaction(
     database_url: String,
     statements: Vec<SqliteStatement>,
 ) -> Result<(), String> {
+    execute_workspace_transaction_inner(app, database_url, statements)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn execute_workspace_transaction_inner(
+    app: tauri::AppHandle,
+    database_url: String,
+    statements: Vec<SqliteStatement>,
+) -> DatabaseResult<()> {
     let database_path = resolve_database_path(&app, &database_url)?;
 
     if let Some(parent_directory) = database_path.parent() {
-        fs::create_dir_all(parent_directory).map_err(|error| error.to_string())?;
+        fs::create_dir_all(parent_directory)?;
     }
 
-    let options = sqlite_connect_options(&database_path).create_if_missing(true);
-    let mut connection = SqliteConnection::connect_with(&options)
-        .await
-        .map_err(|error| error.to_string())?;
-    let mut transaction = connection
-        .begin()
-        .await
-        .map_err(|error| error.to_string())?;
+    let options = create_sqlite_connect_options(&database_path).create_if_missing(true);
+    let mut connection = SqliteConnection::connect_with(&options).await?;
+    let mut transaction = connection.begin().await?;
 
     for statement in statements {
-        let query = statement
-            .values
-            .into_iter()
-            .try_fold(sqlx::query(&statement.query), bind_sqlite_value)?;
-
-        query
-            .execute(&mut *transaction)
-            .await
-            .map_err(|error| error.to_string())?;
+        statement.into_query()?.execute(&mut *transaction).await?;
     }
 
-    transaction
-        .commit()
-        .await
-        .map_err(|error| error.to_string())?;
+    transaction.commit().await?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub(crate) fn reset_workspace_database(app: tauri::AppHandle, database_url: String) -> Result<(), String> {
+pub(crate) fn reset_workspace_database(
+    app: tauri::AppHandle,
+    database_url: String,
+) -> Result<(), String> {
+    reset_workspace_database_inner(app, database_url).map_err(|error| error.to_string())
+}
+
+fn reset_workspace_database_inner(
+    app: tauri::AppHandle,
+    database_url: String,
+) -> DatabaseResult<()> {
     let database_path = resolve_database_path(&app, &database_url)?;
     let recovery_directory = database_path
         .parent()
-        .ok_or_else(|| "FlowDesk could not resolve the database directory.".to_string())?
+        .ok_or(DatabaseError::MissingDatabaseDirectory)?
         .join("database-recovery");
-    let recovery_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
-        .as_millis();
+    let recovery_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-    fs::create_dir_all(&recovery_directory).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&recovery_directory)?;
 
-    for database_file in database_recovery_files(&database_path) {
+    for database_file in get_database_recovery_files(&database_path) {
         if !database_file.exists() {
             continue;
         }
 
         let file_name = database_file
             .file_name()
-            .ok_or_else(|| "FlowDesk could not resolve a database file name.".to_string())?
+            .ok_or(DatabaseError::MissingDatabaseFileName)?
             .to_string_lossy();
         let recovery_path = recovery_directory.join(format!("{recovery_timestamp}-{file_name}"));
 
-        fs::rename(&database_file, recovery_path).map_err(|error| error.to_string())?;
+        fs::rename(&database_file, recovery_path)?;
     }
 
     Ok(())
 }
 
-pub(crate) fn resolve_database_path(app: &tauri::AppHandle, database_url: &str) -> Result<PathBuf, String> {
+pub(crate) fn resolve_database_path(
+    app: &tauri::AppHandle,
+    database_url: &str,
+) -> DatabaseResult<PathBuf> {
     let database_file = database_url
         .strip_prefix("sqlite:")
-        .ok_or_else(|| "FlowDesk expected a sqlite database URL.".to_string())?;
+        .ok_or(DatabaseError::InvalidDatabaseUrl)?;
 
     if database_file.trim().is_empty() {
-        return Err("FlowDesk expected a sqlite database file path.".into());
+        return Err(DatabaseError::EmptyDatabasePath);
     }
 
     let database_path = Path::new(database_file);
@@ -119,14 +119,10 @@ pub(crate) fn resolve_database_path(app: &tauri::AppHandle, database_url: &str) 
         return Ok(database_path.to_path_buf());
     }
 
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|error| error.to_string())?
-        .join(database_path))
+    Ok(app.path().app_config_dir()?.join(database_path))
 }
 
-pub(crate) fn sqlite_connect_options(database_path: &Path) -> SqliteConnectOptions {
+pub(crate) fn create_sqlite_connect_options(database_path: &Path) -> SqliteConnectOptions {
     SqliteConnectOptions::new()
         .filename(database_path)
         .foreign_keys(true)
@@ -134,7 +130,7 @@ pub(crate) fn sqlite_connect_options(database_path: &Path) -> SqliteConnectOptio
         .synchronous(SqliteSynchronous::Normal)
 }
 
-fn database_recovery_files(database_path: &Path) -> [PathBuf; 3] {
+fn get_database_recovery_files(database_path: &Path) -> [PathBuf; 3] {
     let database_path = database_path.to_string_lossy();
 
     [
@@ -144,29 +140,22 @@ fn database_recovery_files(database_path: &Path) -> [PathBuf; 3] {
     ]
 }
 
-fn bind_sqlite_value<'query>(
-    query: Query<'query, Sqlite, SqliteArguments<'query>>,
-    value: Value,
-) -> Result<Query<'query, Sqlite, SqliteArguments<'query>>, String> {
-    Ok(match value {
-        Value::Null => query.bind(Option::<String>::None),
-        Value::Bool(value) => query.bind(value),
-        Value::Number(value) => {
-            if let Some(integer) = value.as_i64() {
-                query.bind(integer)
-            } else if let Some(unsigned_integer) = value.as_u64() {
-                if unsigned_integer > i64::MAX as u64 {
-                    return Err("SQLite integer bind value is out of range.".into());
-                }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-                query.bind(unsigned_integer as i64)
-            } else if let Some(float) = value.as_f64() {
-                query.bind(float)
-            } else {
-                return Err("Unsupported SQLite numeric bind value.".into());
-            }
-        }
-        Value::String(value) => query.bind(value),
-        Value::Array(_) | Value::Object(_) => query.bind(value.to_string()),
-    })
+    #[test]
+    fn returns_database_recovery_files_with_wal_and_shared_memory_sidecars() {
+        let recovery_files = get_database_recovery_files(Path::new("workspace/flowdesk.db"));
+
+        assert_eq!(recovery_files[0], PathBuf::from("workspace/flowdesk.db"));
+        assert_eq!(
+            recovery_files[1],
+            PathBuf::from("workspace/flowdesk.db-wal")
+        );
+        assert_eq!(
+            recovery_files[2],
+            PathBuf::from("workspace/flowdesk.db-shm")
+        );
+    }
 }

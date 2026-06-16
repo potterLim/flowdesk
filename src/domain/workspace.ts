@@ -1,13 +1,28 @@
+declare const workspaceBrand: unique symbol;
+
+type WorkspaceBrand<Value, Name extends string> = Value & { readonly [workspaceBrand]: Name };
+
+export type ProjectId = WorkspaceBrand<string, "ProjectId">;
+export type NoteId = WorkspaceBrand<string, "NoteId">;
+export type TaskId = WorkspaceBrand<string, "TaskId">;
+export type WorkSessionId = WorkspaceBrand<string, "WorkSessionId">;
+export type ReferenceId = WorkspaceBrand<string, "ReferenceId">;
+export type WorkspaceFileId = WorkspaceBrand<string, "WorkspaceFileId">;
+export type TimelineEventId = WorkspaceBrand<string, "TimelineEventId">;
+export type IsoDateTimeString = WorkspaceBrand<string, "IsoDateTimeString">;
+export type IsoDateString = WorkspaceBrand<string, "IsoDateString">;
+export type WorkspaceFilePath = WorkspaceBrand<string, "WorkspaceFilePath">;
+
 export type ProjectStatus = "active" | "archived";
 
 export type ProjectAccent = "teal" | "blue" | "violet" | "amber" | "rose";
 
 export interface Project {
-  id: string;
+  id: ProjectId;
   title: string;
   description: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: IsoDateTimeString;
+  updatedAt: IsoDateTimeString;
   tags: string[];
   status: ProjectStatus;
   isPinned: boolean;
@@ -16,13 +31,13 @@ export interface Project {
 }
 
 export interface Note {
-  id: string;
-  projectId: string;
+  id: NoteId;
+  projectId: ProjectId;
   title: string;
   folder: string;
   content: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: IsoDateTimeString;
+  updatedAt: IsoDateTimeString;
 }
 
 export type TaskStatus = "todo" | "in_progress" | "done" | "archived";
@@ -30,39 +45,39 @@ export type TaskStatus = "todo" | "in_progress" | "done" | "archived";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
 export interface Task {
-  id: string;
-  projectId: string;
+  id: TaskId;
+  projectId: ProjectId;
   title: string;
   status: TaskStatus;
   priority: TaskPriority;
-  dueDate: string | null;
+  dueDate: IsoDateString | null;
   tags: string[];
-  linkedSessionId: string | null;
-  createdAt: string;
-  updatedAt: string;
+  linkedSessionId: WorkSessionId | null;
+  createdAt: IsoDateTimeString;
+  updatedAt: IsoDateTimeString;
 }
 
 export interface WorkSession {
-  id: string;
-  projectId: string;
+  id: WorkSessionId;
+  projectId: ProjectId;
   title: string;
   notes: string;
-  startedAt: string;
-  endedAt: string | null;
+  startedAt: IsoDateTimeString;
+  endedAt: IsoDateTimeString | null;
   durationMinutes: number | null;
 }
 
 export type ReferenceType = "paper" | "website" | "video" | "documentation" | "book";
 
 export interface ReferenceRecord {
-  id: string;
-  projectId: string;
+  id: ReferenceId;
+  projectId: ProjectId;
   title: string;
   type: ReferenceType;
   source: string;
   summary: string;
   tags: string[];
-  createdAt: string;
+  createdAt: IsoDateTimeString;
 }
 
 export type WorkspaceFileType = "pdf" | "png" | "jpg" | "csv" | "txt" | "markdown";
@@ -70,16 +85,16 @@ export type WorkspaceFileType = "pdf" | "png" | "jpg" | "csv" | "txt" | "markdow
 export type WorkspaceFileStorageMode = "managed" | "linked";
 
 export interface WorkspaceFile {
-  id: string;
-  projectId: string;
+  id: WorkspaceFileId;
+  projectId: ProjectId;
   name: string;
   fileType: WorkspaceFileType;
   sizeLabel: string;
-  path: string;
-  sourcePath: string | null;
+  path: WorkspaceFilePath;
+  sourcePath: WorkspaceFilePath | null;
   storageMode: WorkspaceFileStorageMode;
   tags: string[];
-  importedAt: string;
+  importedAt: IsoDateTimeString;
 }
 
 export type TimelineEventType =
@@ -91,12 +106,12 @@ export type TimelineEventType =
   | "export_generated";
 
 export interface TimelineEvent {
-  id: string;
-  projectId: string;
+  id: TimelineEventId;
+  projectId: ProjectId;
   type: TimelineEventType;
   title: string;
   description: string;
-  createdAt: string;
+  createdAt: IsoDateTimeString;
 }
 
 export interface WorkspaceSnapshot {
@@ -109,12 +124,4 @@ export interface WorkspaceSnapshot {
   timelineEvents: TimelineEvent[];
 }
 
-export type WorkspaceView =
-  | "overview"
-  | "notes"
-  | "tasks"
-  | "sessions"
-  | "references"
-  | "files"
-  | "timeline"
-  | "exports";
+export type WorkspaceView = "overview" | "notes" | "tasks" | "sessions" | "files" | "timeline" | "exports";

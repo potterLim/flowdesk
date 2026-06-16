@@ -21,12 +21,12 @@ class InMemorySchemaDatabase implements SqlDatabase {
     this.tableColumns.set("files", new Set(fileColumns));
   }
 
-  async execute(query: string): Promise<unknown> {
+  execute(query: string): Promise<unknown> {
     this.executedQueries.push(query);
 
     if (query.startsWith("CREATE TABLE IF NOT EXISTS files")) {
       if (this.hasFilesTable) {
-        return undefined;
+        return Promise.resolve(undefined);
       }
 
       this.hasFilesTable = true;
@@ -45,38 +45,38 @@ class InMemorySchemaDatabase implements SqlDatabase {
           "imported_at",
         ]),
       );
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     if (query.includes("ADD COLUMN source_path")) {
       this.tableColumns.get("files")?.add("source_path");
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     if (query.includes("ADD COLUMN storage_mode")) {
       this.tableColumns.get("files")?.add("storage_mode");
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     if (query.startsWith("PRAGMA user_version =")) {
       this.userVersion = Number.parseInt(query.replace("PRAGMA user_version =", "").trim(), 10);
     }
 
-    return undefined;
+    return Promise.resolve(undefined);
   }
 
-  async select<T>(query: string): Promise<T> {
+  select<T>(query: string): Promise<T> {
     if (query === "PRAGMA user_version") {
-      return [{ user_version: this.userVersion }] as T;
+      return Promise.resolve([{ user_version: this.userVersion }] as T);
     }
 
     if (query === "PRAGMA table_info(files)") {
       const columns = Array.from(this.tableColumns.get("files") ?? []).map((name) => ({ name }));
 
-      return columns as T;
+      return Promise.resolve(columns as T);
     }
 
-    return [] as T;
+    return Promise.resolve([] as T);
   }
 }
 
@@ -103,7 +103,9 @@ describe("workspaceRepository schema migrations", () => {
     expect(database.executedQueries).toContain("BEGIN TRANSACTION");
     expect(database.executedQueries).toContain("COMMIT");
     expect(database.executedQueries.some((query) => query.includes("source_path TEXT"))).toBe(true);
-    expect(database.executedQueries.some((query) => query.includes("storage_mode TEXT NOT NULL DEFAULT 'linked'"))).toBe(true);
+    expect(
+      database.executedQueries.some((query) => query.includes("storage_mode TEXT NOT NULL DEFAULT 'linked'")),
+    ).toBe(true);
     expect(database.executedQueries).toContain("PRAGMA user_version = 2");
   });
 
@@ -116,7 +118,9 @@ describe("workspaceRepository schema migrations", () => {
     await initializeWorkspaceSchema(database);
 
     expect(database.executedQueries).toContain("ALTER TABLE files ADD COLUMN source_path TEXT");
-    expect(database.executedQueries).toContain("ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'");
+    expect(database.executedQueries).toContain(
+      "ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'",
+    );
     expect(database.executedQueries).toContain("PRAGMA user_version = 2");
   });
 
@@ -140,7 +144,9 @@ describe("workspaceRepository schema migrations", () => {
     await initializeWorkspaceSchema(database);
 
     expect(database.executedQueries).not.toContain("ALTER TABLE files ADD COLUMN source_path TEXT");
-    expect(database.executedQueries).not.toContain("ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'");
+    expect(database.executedQueries).not.toContain(
+      "ALTER TABLE files ADD COLUMN storage_mode TEXT NOT NULL DEFAULT 'linked'",
+    );
     expect(database.executedQueries).toContain("PRAGMA user_version = 2");
   });
 
@@ -181,6 +187,39 @@ describe("workspaceRepository backup normalization", () => {
     });
   });
 
+  it("keeps malformed backup dates and file paths outside the trusted domain model", () => {
+    const snapshot = normalizeWorkspaceSnapshot({
+      projects: [
+        {
+          id: "project-1",
+          title: "Retina Organoid",
+          createdAt: "2026-02-31T00:00:00.000Z",
+          updatedAt: "2026-05-15T00:00:00.000Z",
+        },
+      ],
+      tasks: [
+        {
+          id: "task-1",
+          projectId: "project-1",
+          title: "Validate organoid image set",
+          dueDate: "2026-02-31",
+        },
+      ],
+      files: [
+        {
+          id: "file-1",
+          projectId: "project-1",
+          name: "paper.pdf",
+          path: "",
+        },
+      ],
+    });
+
+    expect(snapshot?.projects.at(0)?.createdAt).not.toBe("2026-02-31T00:00:00.000Z");
+    expect(snapshot?.tasks.at(0)?.dueDate).toBeNull();
+    expect(snapshot?.files).toEqual([]);
+  });
+
   it("reads valid workspace backup files and rejects unrelated JSON", () => {
     const backup = readWorkspaceBackup(
       JSON.stringify({
@@ -199,7 +238,7 @@ describe("workspaceRepository backup normalization", () => {
       }),
     );
 
-    expect(backup.projects[0].title).toBe("Computer Vision");
+    expect(backup.projects.at(0)?.title).toBe("Computer Vision");
     expect(() => readWorkspaceBackup(JSON.stringify({ projects: [] }))).toThrow("valid FlowDesk backup");
   });
 });
